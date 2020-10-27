@@ -1,5 +1,6 @@
 import os
 import os.path
+from setuptools import setup, find_packages
 
 root = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(root, 'README.md'), 'rb') as readme:
