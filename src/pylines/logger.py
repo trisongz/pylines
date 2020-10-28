@@ -87,5 +87,4 @@ def get_logger(name: Optional[str] = "Pylines") -> logging.Logger:
     if name is None:
         name = "Pylines"
     _configure_library_root_logger(name)
-    return _default_handler
-    #return logging.getLogger(name)
+    return _pylines_handler
