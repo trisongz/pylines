@@ -197,5 +197,5 @@ def _io_type(x):
     elif isinstance(x, float):
         return 'float'
 
-import .io
+from . import io
 from .io import Pylines, LazyLoadFile, LineSeekableFile
