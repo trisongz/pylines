@@ -141,7 +141,10 @@ class Pylines:
         pbar = trange(self.total_lines, desc='Tokenization') if _env['tqdm'] else None
         self.timer.start('Tokenization')
         if use_mp:
-            pool = mp.Pool()
+            if isinstance(use_mp, int):
+                pool = mp.Pool(use_mp)
+            else:
+                pool = mp.Pool()
             for fn in self.input_fns:
                 for result in pool.imap_unordered(TokenizerWorker, FileIterator(fn)):
                     self.write(result)

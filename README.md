@@ -31,7 +31,7 @@ input_fns: None, if no input file is set, can be later set or added. by calling 
 output_fn: None, if no output file is set, can be later set or added. - if no output file is set, can be later set by calling 
 skip_broken: True, will skip unparsable lines by default
 overwrite_output: False, will control overwriting of the output file
-use_lazyL False, doesn't do anything right now
+use_lazy: False, doesn't do anything right now
 use_mp: True, doesn't explicitly do anything right now
 use_idx: False, doesn't do anything right now
 total_lines: 0, used to set the total lines expected, useful if you already know how many items are in your file and prevent counting of items during initialization.
@@ -92,10 +92,10 @@ Takes no args. Iterates over all files added and yields deserialized json lines.
 Pylines.linecount(filename=None): -> dict in {filename: num_lines} for each file
 If filename, will find the total number of lines in the file. Else will iterate through input_files and returns dict
 
-Pylines.stats -> dict [property] in {filename: {'passed': int, 'missed': int}} for each filename that have been processed. Will reset upon each call of iterators.
+Pylines.stats -> dict [property] in {filename: {'read': int, 'missed': int}} for each filename that have been processed. Will reset upon each call of iterators.
 
 # Example usage below.
-Pylines.tokenize(tokenizer_fn, use_mp=True): -> tokenized examples to output_fn.
+Pylines.tokenize(tokenizer_fn, use_mp=[True, or int for num_processes]): -> tokenized examples to output_fn.
 Iterates through all files and tokenizes with provided tokenizer_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
 
 '''
@@ -160,7 +160,10 @@ def tokenize_fn(example):
 processor = Pylines(input_fn, output_fn, overwrite_output=False)
 
 # Pass the above tokenization function through, which will be serialized and used to process every line.
+# By default, use_mp=True will use all cores.
 processor.tokenize(tokenize_fn, use_mp=True)
+# or use_mp=int will use that many processes in mp.Pool
+processor.tokenize(tokenize_fn, use_mp=4)
 
 ```
 
@@ -171,3 +174,5 @@ Roadmap:
 - Support for sharding of files rather than a single big output file
 - Conditional merging of input files
 - Support for mapping of jsonlines into functions
+- Allow for caching through redis backend
+- Creating an index file that maps keys <-> int to save precious bytes when writing large files
