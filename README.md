@@ -95,9 +95,13 @@ If filename, will find the total number of lines in the file. Else will iterate 
 Pylines.stats -> dict [property] in {filename: {'read': int, 'missed': int}} for each filename that have been processed. Will reset upon each call of iterators.
 
 # Example usage below.
-Pylines.tokenize(tokenizer_fn, use_mp=[True, or int for num_processes]): -> tokenized examples to output_fn.
+Pylines.tokenize(tokenizer_fn, return_results=False, use_mp=[True, or int for num_processes]): -> tokenized examples to output_fn.
 Iterates through all files and tokenizes with provided tokenizer_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
+If return_results=True, yields results as a generator.
 
+Pylines.run_function(iter_fn, return_results=False, use_mp=[True, or int for num_processes]): ->  results from function(line) to output_fn.
+Iterates through all files and tokenizes with provided iter_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
+If return_results=True, yields results as a generator.
 '''
 
 ```
@@ -164,6 +168,10 @@ processor = Pylines(input_fn, output_fn, overwrite_output=False)
 processor.tokenize(tokenize_fn, use_mp=True)
 # or use_mp=int will use that many processes in mp.Pool
 processor.tokenize(tokenize_fn, use_mp=4)
+
+# or use as a generator
+for ex in processor.tokenize(tokenize_fn, use_mp=True, return_results=True):
+    # do something with ex
 
 ```
 

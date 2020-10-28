@@ -107,15 +107,24 @@ def setup_tokenize_fn(tokenizer_fn):
     global tokenize_fn
     tokenize_fn = tokenizer_fn
 
+def TokenizerWorker(ex):
+    result = tokenize_fn(ex)
+    return result
+
+def setup_iter_fn(iter_fn):
+    global _iter_func
+    _iter_func = iter_fn
+
+def IterWorker(ex):
+    result = _iter_func(ex)
+    return result
+
 def FileIterator(filename):
     with get_read_fn(filename) as f:
         for line in f:
             yield parser.parse(line).as_dict()
     raise StopIteration
 
-def TokenizerWorker(ex):
-    result = tokenize_fn(ex)
-    return result
 
 class Pylines:
     def __init__(self, input_fns=None, output_fn=None, skip_broken=True, overwrite_output=False, use_lazy=False, use_mp=True, use_idx=False, total_lines=0):
@@ -131,7 +140,7 @@ class Pylines:
         if output_fn:
             self._setup_output_fn(output_fn)
     
-    def tokenize(self, tokenizer_fn, input_fns=None, output_fn=None, use_mp=True):
+    def tokenize(self, tokenizer_fn, return_results=False, input_fns=None, output_fn=None, use_mp=True):
         setup_tokenize_fn(tokenizer_fn)
         if input_fns:
             self._setup_input_fns(input_fns)
@@ -147,7 +156,10 @@ class Pylines:
                 pool = mp.Pool()
             for fn in self.input_fns:
                 for result in pool.imap_unordered(TokenizerWorker, FileIterator(fn)):
-                    self.write(result)
+                    if return_results:
+                        yield result
+                    else:
+                        self.write(result)
                     if pbar:
                         pbar.update()
                 self.flush()
@@ -156,14 +168,55 @@ class Pylines:
             for fn in self.input_fns:
                 for result in self._file_iter(fn):
                     ex = tokenizer_fn(result)
-                    self.write(result)
+                    if return_results:
+                        yield ex
+                    else:
+                        self.write(ex)
                     if pbar:
                         pbar.update()
                 self.flush()
         if pbar:
             pbar.close()
         logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
-        
+
+    def run_function(self, iter_func, return_results=False, input_fns=None, output_fn=None, use_mp=True):
+        setup_iter_fn(iter_func)
+        if input_fns:
+            self._setup_input_fns(input_fns)
+        if output_fn:
+            self._setup_output_fn(output_fn)
+
+        pbar = trange(self.total_lines, desc='Iterator Function') if _env['tqdm'] else None
+        self.timer.start('Iterator Function')
+        if use_mp:
+            if isinstance(use_mp, int):
+                pool = mp.Pool(use_mp)
+            else:
+                pool = mp.Pool()
+            for fn in self.input_fns:
+                for result in pool.imap_unordered(IterWorker, FileIterator(fn)):
+                    if return_results:
+                        yield result
+                    else:
+                        self.write(result)
+                    if pbar:
+                        pbar.update()
+                self.flush()
+            
+        else:
+            for fn in self.input_fns:
+                for result in self._file_iter(fn):
+                    ex = iter_func(result)
+                    if return_results:
+                        yield ex
+                    else:
+                        self.write(ex)
+                    if pbar:
+                        pbar.update()
+                self.flush()
+        if pbar:
+            pbar.close()
+        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')    
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
