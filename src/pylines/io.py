@@ -266,7 +266,7 @@ class Pylines:
                 yield self.loads(line)
         reader.close()
 
-    def _get_file_lines(self, input_fns):
+    def _get_file_lines(self, input_fns=None):
         if input_fns:
             for fn in input_fns:
                 self.total_lines += line_count(fn)
