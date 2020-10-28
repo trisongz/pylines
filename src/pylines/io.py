@@ -190,18 +190,6 @@ class Pylines:
                 if _matched and results == 'first':
                     break
     
-    def clear_input_files(self):
-        self.input_fns = None
-
-    def set_input_files(self, input_fns):
-        self.input_fns = None
-        self._setup_input_fns(input_fns)
-
-    def add_files(self, input_fns):
-        self._setup_input_fns(input_fns)
-
-    def set_writefile(self, output_fn):
-        self._setup_output_fn(output_fn)
 
     def write(self, item):
         if not self.writer:
@@ -211,16 +199,6 @@ class Pylines:
         
         self.writer(json.dumps(item, ensure_ascii=False))
         self.writer('\n')
-
-    def close(self):
-        if self.writer:
-            self.writer_fn.close()
-        if self.reader:
-            self.reader.close()
-
-    def flush(self):
-        if self.writer:
-            self.writer_fn.flush()
 
     def index(self, idx, fn=None):
         if fn:
@@ -282,14 +260,6 @@ class Pylines:
             for result in self._file_iter(fn):
                 yield result
     
-    def parse(self, v):
-        return parser.parse(v)
-
-    def loads(self, v):
-        return parser.parse(v).as_dict()
-
-    def load(self, v):
-        return json.load(v)
 
     def _setup_input_fns(self, input_fns):
         in_files = []
@@ -320,6 +290,47 @@ class Pylines:
             self.output_fn = output_fn
         else:
             raise ValueError('Output Filenames should be a string')
+
+    def parse(self, v):
+        return parser.parse(v)
+
+    def loads(self, v):
+        return parser.parse(v).as_dict()
+
+    def load(self, v):
+        return json.load(v)
+    
+    def dumps(self, v):
+        return json.dumps(v, ensure_ascii=False)
+
+    def dump(self, fn, v):
+        if _io_type(fn) == 'str':
+            json.dump(v, get_write_fn(fn))
+        else:
+            json.dump(v, fn)
+    
+    def clear_input_files(self):
+        self.input_fns = None
+
+    def set_input_files(self, input_fns):
+        self.input_fns = None
+        self._setup_input_fns(input_fns)
+
+    def add_files(self, input_fns):
+        self._setup_input_fns(input_fns)
+
+    def set_writefile(self, output_fn):
+        self._setup_output_fn(output_fn)
+
+    def close(self):
+        if self.writer:
+            self.writer_fn.close()
+        if self.reader:
+            self.reader.close()
+
+    def flush(self):
+        if self.writer:
+            self.writer_fn.flush()
 
     def __len__(self):
         return self.total_lines        
