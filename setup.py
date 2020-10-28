@@ -49,8 +49,6 @@ setup(
             'google-cloud-storage',
             'smart_open[all]',
             'transformers',
-            'redis',
-            'ray'
         ]
     }
 )

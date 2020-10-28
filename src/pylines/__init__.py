@@ -12,6 +12,8 @@ else:
 import os
 import subprocess
 import simdjson as json
+import time
+
 parser = json.Parser()
 
 try:
@@ -197,5 +199,40 @@ def _io_type(x):
     elif isinstance(x, float):
         return 'float'
 
+class Timer:
+    def __init__(self):
+        self.idx = 0
+        self.active = False
+
+    def start(self, task):
+        if self.active:
+            self.stop()
+
+        self.task = task
+        self.start_timer()
+        self.active = True
+
+    def start_timer(self):
+        self.start_time = time.time()
+        self.ckpt_time = time.time()
+        self.total_time = 0
+    
+    def time(self):
+        stop_time = time.time()
+        time_string = f'- Current Time for {self.task}: {(stop_time - self.start_time) / 60:.2f} mins / {(stop_time - self.start_time) :.2f} secs'
+        return time_string
+    
+    def secs(self):
+        stop_time = time.time()
+        s = (stop_time - self.start_time)
+        return s
+    
+    def stop(self):
+        stop_time = time.time()
+        time_string = f'- Total Time for {self.task}: {(stop_time - self.start_time) / 60:.2f} mins / {(stop_time - self.start_time) :.2f} secs'
+        self.start_time = 0
+        return time_string
+
+from . import logger
 from . import io
 from .io import Pylines, LazyLoadFile, LineSeekableFile

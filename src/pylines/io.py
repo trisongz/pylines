@@ -1,14 +1,16 @@
 import random
 import os
 from . import line_count, create_idx_key, get_idx_key, get_write_fn, get_read_fn, _io_type
-from . import _env, parser, json, glob
+from . import _env, parser, json, glob, Timer
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
 #if _env['ray']:
 #    import ray.util.multiprocessing as mp
 #else:
+from .logger import get_logger
 import multiprocessing as mp
 
+logger = get_logger()
 
 # https://stackoverflow.com/questions/620367/how-to-jump-to-a-particular-line-in-a-huge-text-file
 class LineSeekableFile:
@@ -121,6 +123,7 @@ class Pylines:
         self.total_lines = total_lines
         self.writer, self.reader = None, None
         self.input_fns, self.output_fn = None, None
+        self.timer = Timer()
         if input_fns:
             self._setup_input_fns(input_fns)
             
@@ -135,7 +138,7 @@ class Pylines:
             self._setup_output_fn(output_fn)
 
         pbar = trange(self.total_lines, desc='Tokenization') if _env['tqdm'] else None
-
+        self.timer.start('Tokenization')
         if use_mp:
             pool = mp.Pool()
             for fn in self.input_fns:
@@ -144,6 +147,7 @@ class Pylines:
                     if pbar:
                         pbar.update()
                 self.flush()
+            
         else:
             for fn in self.input_fns:
                 for result in self._file_iter(fn):
@@ -153,6 +157,9 @@ class Pylines:
                         pbar.update()
                 self.flush()
 
+        logger.info(self.timer.stop())
+        if pbar:
+            pbar.close()
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
