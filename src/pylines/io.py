@@ -214,8 +214,9 @@ class Pylines:
         else:
             results = {}
             for fn in self.input_fns:
-                for match in self._file_idx(idx, fn):
-                    results[fn] = match
+                results[fn] = self._file_idx(idx, fn)
+                #for match in self._file_idx(idx, fn):
+                #    results[fn] = match
             return results
     
     def _file_idx(self, idx, fn):
