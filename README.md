@@ -3,9 +3,18 @@ Simplifying parsing of large jsonline files in NLP Workflows (but you can use it
 
 ## Quickstart
 
-#### Quick Installation
+#### Quick Installation + Various Flavors
 ```shell
-pip install --upgrade git+https://github.com/trisongz/pylines.git
+
+# only installs pysimdjson as the requirement
+pip install --upgrade pylines 
+
+ # Installs tensorflow, smart_open[all], google-cloud-storage
+pip install --upgrade pylines[cloud]
+
+# Installs above + transformers, torch
+pip install --upgrade pylines[all] 
+
 ```
 
 #### Editable Installation
@@ -18,14 +27,14 @@ git clone https://github.com/trisongz/pylines.git && cd pylines && pip install -
 '''
 Base Default Variables for Pylines
 
-input_fns=None - if no input file is set, can be later set by calling Pylines.add_files(input_files), adding to existing files or Pylines.set_input_files(input_files) to override existing list of files, and set to the new files.
-output_fn=None - if no output file is set, can be later set by calling Pylines.set_writefile(output_file)
-skip_broken=True - will skip unparsable lines by default
-overwrite_output=False - will control overwriting of the output file
-use_lazy=False - doesn't do anything right now
-use_mp=True - doesn't explicitly do anything right now
-use_idx=False - doesn't do anything right now
-total_lines=0 - used to set the total lines expected, useful if you already know how many items are in your file and prevent counting of items during initialization.
+input_fns: None, if no input file is set, can be later set or added. by calling , adding to existing files or  to override existing list of files, and set to the new files.
+output_fn: None, if no output file is set, can be later set or added. - if no output file is set, can be later set by calling 
+skip_broken: True, will skip unparsable lines by default
+overwrite_output: False, will control overwriting of the output file
+use_lazyL False, doesn't do anything right now
+use_mp: True, doesn't explicitly do anything right now
+use_idx: False, doesn't do anything right now
+total_lines: 0, used to set the total lines expected, useful if you already know how many items are in your file and prevent counting of items during initialization.
 
 '''
 from pylines import Pylines
@@ -49,6 +58,47 @@ write = lines.write
 for item in lines.iter():
     # process items here
     write(item)
+
+'''
+Quick Function Cheatsheet
+
+# I/O
+Pylines.add_files(input_files): str or list. Used to add new files to the input feed
+Pylines.set_input_files(input_files): str or list. Used to override existing files.
+
+Pylines.set_writefile(output_file, overwrite=False): str, bool. Used to set the output file. Will append by default if file exists.
+
+Pylines.clear_input_files(): No args. Clears all input files. Use set_input_files or add_files to add new input files.
+
+# Json Functions - Majority of default json functions are wrappers around simdjson
+Pylines.parse(x): Will read from binary and return as bytes. Use .loads() instead for a python dict. Useful for direct serialization, ie from json to pickle.
+Pylines.loads(x): Will read from binary or any json string, and return as deserialized json.
+
+Pylines.dumps(x): Serializes json input
+Pylines.dump(filename, x): Serializes json input (non-jsonlines), and will take an open_fn or a raw file string.
+
+Pylines.index(idx, filename=None): -> dict
+Returns a line from a specific index. If filename is set, will use that specific file instead of existing files added. If no filename, will return the same index from all files added.
+
+Pylines.write(x): Serializes and writes json to the output_fn and appends with a newline. Do not call with json.dumps() as this is already handled.
+
+# Other Functions
+Pylines.find(key, value, results=['first', 'all'], filename=None): -> dict [generator]
+Yields results when key=value from file, assuming all lines have key within the line. If used with filename, will search that filename instead of added files, else will search through all files added. If results='first', will only return the first line that matches. If results='all', will return all lines in all file(s) that match.
+
+Pylines.iter(): -> dict [generator]
+Takes no args. Iterates over all files added and yields deserialized json lines.
+
+Pylines.linecount(filename=None): -> dict in {filename: num_lines} for each file
+If filename, will find the total number of lines in the file. Else will iterate through input_files and returns dict
+
+Pylines.stats -> dict [property] in {filename: {'passed': int, 'missed': int}} for each filename that have been processed. Will reset upon each call of iterators.
+
+# Example usage below.
+Pylines.tokenize(tokenizer_fn, use_mp=True): -> tokenized examples to output_fn.
+Iterates through all files and tokenizes with provided tokenizer_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
+
+'''
 
 ```
 

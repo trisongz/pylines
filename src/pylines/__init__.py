@@ -167,7 +167,7 @@ def get_write_fn(filename, overwrite=False):
 
 
 def line_count(filename):
-    return int(subprocess.check_output(['wc', '-l', filename]).split()[0]) + 1
+    return int(subprocess.check_output(['wc', '-l', filename]).split()[0])
 
 def create_idx_key(filename, line):
     idx = {i: key for i, key, v in enumerate(line.items())}

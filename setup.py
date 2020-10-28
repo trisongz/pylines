@@ -31,10 +31,6 @@ setup(
         "pysimdjson"
     ],
     extras_require={
-        'gcp': [
-            'tensorflow>=2.1.0',
-            'google-cloud-storage'
-        ],
         'cloud': [
             'tensorflow>=2.1.0',
             'google-cloud-storage',

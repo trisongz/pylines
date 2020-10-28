@@ -10,3 +10,4 @@ dist/pylines-0.0.1-py3-none-any.whl
 build/lib/pylines/logger.py
 build/lib/pylines/io.py
 build/lib/pylines/__init__.py
+build.sh

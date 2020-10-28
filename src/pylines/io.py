@@ -123,7 +123,7 @@ class Pylines:
         self.total_lines = total_lines
         self.writer, self.reader = None, None
         self.input_fns, self.output_fn = None, None
-        self.lineidx, self.badidx = 0, 0
+        self.stats = {}
         self.timer = Timer()
         if input_fns:
             self._setup_input_fns(input_fns)
@@ -227,26 +227,31 @@ class Pylines:
 
     def _file_iter(self, fn):
         reader = get_read_fn(fn)
+        if self._skip:
+            self._reset_stats(fn)
         for line in reader:
             if self._skip:
                 try:
                     yield self.loads(line)
-                    self.lineidx += 1
+                    self.stats[fn]['read'] += 1
                 except:
-                    self.badidx += 1
+                    self.stats[fn]['missed'] += 1
             else:
                 yield self.loads(line)
         reader.close()
 
     def _fast_file_iter(self, fn):
         reader = get_read_fn(fn)
+        if self._skip:
+            self._reset_stats(fn)
         for line in reader:
             if self._skip:
                 try:
                     yield self.loads(line)
-                    self.lineidx += 1
+                    self.stats[fn]['read'] += 1
                 except:
-                    self.badidx += 1
+                    self.stats[fn]['missed'] += 1
+
             else:
                 yield self.loads(line)
         reader.close()
@@ -260,9 +265,6 @@ class Pylines:
                 self.total_lines += line_count(fn)
 
     def __iter__(self):
-        if self._skip:
-            self.lineidx = 0
-            self.badidx = 0
         for fn in self.input_fns:
             for result in self._file_iter(fn):
                 yield result
@@ -317,21 +319,28 @@ class Pylines:
 
     def dump(self, fn, v):
         if _io_type(fn) == 'str':
-            json.dump(v, get_write_fn(fn))
+            json.dump(v, get_write_fn(fn, overwrite=self._overwrite))
         else:
             json.dump(v, fn)
     
+    def _reset_stats(self, fn):
+        self.stats[fn] = {'read': 0, 'missed': 0}
+
     def clear_input_files(self):
+        self.stats = {}
+        #self.lineidx = 0
+        #self.badidx = 0
         self.input_fns = None
 
     def set_input_files(self, input_fns):
-        self.input_fns = None
+        self.clear_input_files()
         self._setup_input_fns(input_fns)
 
     def add_files(self, input_fns):
         self._setup_input_fns(input_fns)
 
-    def set_writefile(self, output_fn):
+    def set_writefile(self, output_fn, overwrite=False):
+        self._overwrite = overwrite
         self._setup_output_fn(output_fn)
 
     def close(self):
@@ -343,6 +352,15 @@ class Pylines:
     def flush(self):
         if self.writer:
             self.writer_fn.flush()
+
+    def linecount(self, filename=None):
+        results = {}
+        if filename:
+            results[filename] = line_count(filename)
+            return results
+        for fn in self.input_fns:
+            results[fn] = line_count(fn)
+        return results
 
     def __len__(self):
         return self.total_lines        
