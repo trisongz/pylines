@@ -156,10 +156,10 @@ class Pylines:
                     if pbar:
                         pbar.update()
                 self.flush()
-
-        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
         if pbar:
             pbar.close()
+        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
+        
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
