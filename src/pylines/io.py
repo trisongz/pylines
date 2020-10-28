@@ -120,15 +120,12 @@ class Pylines:
         self._skip, self._lazy, self._mp, self._idx = skip_broken, use_lazy, use_mp, use_idx
         self.total_lines = total_lines
         self.writer, self.reader = None, None
+        self.input_fns, self.output_fn = None, None
         if input_fns:
             self._setup_input_fns(input_fns)
-        else:
-            self.input_fns = None
-        
+            
         if output_fn:
             self._setup_output_fn(output_fn)
-        else:
-            self.output_fn = None
     
     def tokenize(self, tokenizer_fn, input_fns=None, output_fn=None, use_mp=True):
         setup_tokenize_fn(tokenizer_fn)
