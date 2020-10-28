@@ -212,9 +212,11 @@ class Pylines:
         if fn:
             return self._file_idx(idx, fn)
         else:
+            results = {}
             for fn in self.input_fns:
                 for match in self._file_idx(idx, fn):
-                    yield match
+                    results[fn] = match
+            return results
     
     def _file_idx(self, idx, fn):
         reader = get_read_fn(fn)

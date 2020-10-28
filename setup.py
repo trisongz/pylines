@@ -10,7 +10,7 @@ setup(
     name='pylines',
     package_dir={'': 'src'},
     packages=find_packages('src'),
-    version='0.0.1',
+    version='0.0.2',
     description='work with large jsonline files with ease',
     long_description=long_description,
     long_description_content_type='text/markdown',
