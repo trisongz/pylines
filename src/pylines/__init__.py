@@ -92,22 +92,22 @@ def get_read_fn(filename):
             if _gcs_available:
                 return smart_open.open(filename, transport_params=dict(client=gcp_storage_client), 'rb')
         else:
-            raise ValueError, 'Tensorflow and SmartOpen are not available to open a GCS File'
+            raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
             return smart_open.open(filename, 'rb')
         else:
-            raise ValueError, 'SmartOpen is not available to open a S3 File'
+            raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
         if _smartopen_available:
             return smart_open.open(filename, 'rb')
         else:
-            raise ValueError, 'SmartOpen is not available to open a HTTP File'
+            raise ValueError('SmartOpen is not available to open a HTTP File')
     elif filename.startswith('hdfs://') or filename.startswith('webhdfs://'):
         if _smartopen_available:
             return smart_open.open(filename, 'rb')
         else:
-            raise ValueError, 'SmartOpen is not available to open a HDFS File'
+            raise ValueError('SmartOpen is not available to open a HDFS File')
     else:
         if _tf_available:
             return tf.io.gfile.GFile(filename, 'rb+')
@@ -139,22 +139,22 @@ def get_write_fn(filename, overwrite=False):
             if _gcs_available:
                 return smart_open.open(filename, transport_params=dict(client=gcp_storage_client), _write_mode)
         else:
-            raise ValueError, 'Tensorflow and SmartOpen are not available to open a GCS File'
+            raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
             return smart_open.open(filename, _write_mode)
         else:
-            raise ValueError, 'SmartOpen is not available to open a S3 File'
+            raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
         if _smartopen_available:
             return smart_open.open(filename, _write_mode)
         else:
-            raise ValueError, 'SmartOpen is not available to open a HTTP File'
+            raise ValueError, 'SmartOpen is not available to open a HTTP File')
     elif filename.startswith('hdfs://') or filename.startswith('webhdfs://'):
         if _smartopen_available:
             return smart_open.open(filename, _write_mode)
         else:
-            raise ValueError, 'SmartOpen is not available to open a HDFS File'
+            raise ValueError('SmartOpen is not available to open a HDFS File')
     else:
         if _tf_available:
             return tf.io.gfile.GFile(filename, _write_mode)

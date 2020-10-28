@@ -308,7 +308,7 @@ class Pylines:
                 else:
                     in_files.append(fn)
         else:
-            raise ValueError, 'Input Filenames should be a string or list'
+            raise ValueError('Input Filenames should be a string or list')
         
         if self.input_fns:
             in_files = [f for f in in_files if f not in self.input_fns]
@@ -322,7 +322,7 @@ class Pylines:
         if _io_type(output_fn) == 'str':
             self.output_fn = output_fn
         else:
-            raise ValueError, 'Output Filenames should be a string'
+            raise ValueError('Output Filenames should be a string')
 
     def __len__(self):
         return self.total_lines        
