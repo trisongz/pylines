@@ -149,7 +149,7 @@ def get_write_fn(filename, overwrite=False):
         if _smartopen_available:
             return smart_open.open(filename, _write_mode)
         else:
-            raise ValueError, 'SmartOpen is not available to open a HTTP File')
+            raise ValueError('SmartOpen is not available to open a HTTP File')
     elif filename.startswith('hdfs://') or filename.startswith('webhdfs://'):
         if _smartopen_available:
             return smart_open.open(filename, _write_mode)
