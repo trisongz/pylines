@@ -118,8 +118,8 @@ def TokenizerWorker(ex):
     return result
 
 class Pylines:
-    def __init__(self, input_fns=None, output_fn=None, skip_broken=True, use_lazy=False, use_mp=True, use_idx=False, total_lines=0):
-        self._skip, self._lazy, self._mp, self._idx = skip_broken, use_lazy, use_mp, use_idx
+    def __init__(self, input_fns=None, output_fn=None, skip_broken=True, overwrite_output=False, use_lazy=False, use_mp=True, use_idx=False, total_lines=0):
+        self._skip, self._lazy, self._mp, self._idx, self._overwrite = skip_broken, use_lazy, use_mp, use_idx, overwrite_output
         self.total_lines = total_lines
         self.writer, self.reader = None, None
         self.input_fns, self.output_fn = None, None
@@ -201,7 +201,7 @@ class Pylines:
     def write(self, item):
         if not self.writer:
             assert self.output_fn, 'Output File must be set prior to write. call .writefile(filename) to set the output file'
-            self.writer_fn = get_write_fn(self.output_fn)
+            self.writer_fn = get_write_fn(self.output_fn, overwrite=self._overwrite)
             self.writer = self.writer_fn.write
         
         self.writer(json.dumps(item, ensure_ascii=False))
