@@ -157,7 +157,7 @@ class Pylines:
                         pbar.update()
                 self.flush()
 
-        logger.info(self.timer.stop())
+        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
         if pbar:
             pbar.close()
 
