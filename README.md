@@ -54,18 +54,25 @@ for item in Pylines(input_fn):
     print(item)
 
 # Can be initialized as an object
-lines = Pylines(input_fn)
+pylines = Pylines(input_fn)
 # returns total count of all lines in all input files
-print(len(lines))
+print(len(pylines))
 
 # Can set output file and then iterate through input files, and writing to output file
 output_file = 'myoutputfile.json' # only takes a string right now
-lines.set_writefile(output_file)
+pylines.set_writefile(output_file)
 
-write = lines.write
-for item in lines.iter():
+write = pylines.write
+for item in pylines.iter():
     # process items here
     write(item)
+
+# alternatively, you can pass a function and run an iterator with mp, and have it write to the output file
+pylines.run_function(processor_function)
+
+# or get the results from the processor to do something else
+for result in pylines.run_function(processor_function, return_results=True):
+    # do something with results
 
 '''
 Quick Function Cheatsheet
