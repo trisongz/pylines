@@ -123,6 +123,7 @@ class Pylines:
         self.total_lines = total_lines
         self.writer, self.reader = None, None
         self.input_fns, self.output_fn = None, None
+        self.lineidx, self.badidx = 0, 0
         self.timer = Timer()
         if input_fns:
             self._setup_input_fns(input_fns)
