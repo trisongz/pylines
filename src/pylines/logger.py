@@ -64,7 +64,7 @@ def _setup_library_root_logger(name):
         'logfile_file': None,
         'logfile_log_level': "debug",
         'logfile_log_color': False,
-        'log_line_template': f"%(color_on)s[{name}] %(funcName)-18s%(color_off)s: %(message)s"
+        'log_line_template': f"%(color_on)s[{name}] %(funcName)-5s%(color_off)s: %(message)s"
     }
     logger = PylinesLogger(logger_config)
     return logger.get_logger()
