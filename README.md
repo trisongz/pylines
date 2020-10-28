@@ -1,6 +1,14 @@
 # Pylines
 Simplifying parsing of large jsonline files in NLP Workflows (but you can use it for anything)
 
+## Highlights
+- Memory Efficient Processing of Large (GB+) Jsonline files
+- High performance through use of iterators, multiprocessing, and simdjson
+- Deterministic open_function, allowing r/w to cloud storage objects (s3,gs)
+- Removes need to handle dumps, newlines, flush when writing to file
+- Minimal dependencies (only simdjson)
+- Allows passing of functions directly to iterators w/ multiprocessing, writing to file or returning results
+
 ## Quickstart
 
 #### Quick Installation + Various Flavors
@@ -88,6 +96,9 @@ Yields results when key=value from file, assuming all lines have key within the 
 
 Pylines.iter(): -> dict [generator]
 Takes no args. Iterates over all files added and yields deserialized json lines.
+
+Pylines.merge(input_fns=None, output_fn=None):
+Adds input_fns to existing files, and sets output_fn if not none. Merges them all into the output fn.
 
 Pylines.linecount(filename=None): -> dict in {filename: num_lines} for each file
 If filename, will find the total number of lines in the file. Else will iterate through input_files and returns dict

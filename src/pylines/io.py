@@ -216,7 +216,7 @@ class Pylines:
                 self.flush()
         if pbar:
             pbar.close()
-        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')    
+        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
@@ -254,6 +254,22 @@ class Pylines:
                 if _matched and results == 'first':
                     break
     
+    def merge(self, input_fns=None, output_fn=None):
+        if input_fns:
+            self._setup_input_fns(input_fns)
+        if output_fn:
+            self._setup_output_fn(output_fn)
+        pbar = trange(self.total_lines, desc=f'Merging {len(self.input_fns)} Files') if _env['tqdm'] else None
+        self.timer.start(f'Merging {len(self.input_fns)} Files')
+        for result in self.iter():
+            self.write(result)
+            if pbar:
+                pbar.update()
+        self.flush()
+        if pbar:
+            pbar.close()
+        logger.info(f'{self.timer.stop()} with {self.total_lines} Items to {self.output_fn}')
+        
 
     def write(self, item):
         if not self.writer:
@@ -271,8 +287,6 @@ class Pylines:
             results = {}
             for fn in self.input_fns:
                 results[fn] = self._file_idx(idx, fn)
-                #for match in self._file_idx(idx, fn):
-                #    results[fn] = match
             return results
     
     def _file_idx(self, idx, fn):
