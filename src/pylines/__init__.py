@@ -90,7 +90,7 @@ def get_read_fn(filename):
             return tf.io.gfile.GFile(filename, 'rb+')
         elif _smartopen_available:
             if _gcs_available:
-                return smart_open.open(filename, transport_params=dict(client=gcp_storage_client), 'rb')
+                return smart_open.open(filename, 'rb', transport_params=dict(client=gcp_storage_client))
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
@@ -137,7 +137,7 @@ def get_write_fn(filename, overwrite=False):
             return tf.io.gfile.GFile(filename, _write_mode)
         elif _smartopen_available:
             if _gcs_available:
-                return smart_open.open(filename, transport_params=dict(client=gcp_storage_client), _write_mode)
+                return smart_open.open(filename, _write_mode, transport_params=dict(client=gcp_storage_client))
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
