@@ -137,7 +137,7 @@ class Pylines:
         if output_fn:
             self._setup_output_fn(output_fn)
 
-        pbar = trange(self.total_lines, desc'Tokenization') if _env['tqdm'] else None
+        pbar = trange(self.total_lines, desc='Tokenization') if _env['tqdm'] else None
 
         if use_mp:
             pool = mp.Pool()
