@@ -80,7 +80,6 @@ from transformers import T5Tokenizer
 from pylines import Pylines
 import numpy as np
 
-
 tokenizer = T5Tokenizer.from_pretrained('t5-base')
 input_fn = 'myinputfile.json'
 output_fn = 'tokenized_file.json'
@@ -92,18 +91,18 @@ def shift_to_right(input_ids, decoder_start_token_id):
     return shifted_input_ids
 
 def tokenize_fn(example):
-    encoder_tokens = tokenizer(example[source_field_name], truncation='longest_first', max_length=416, padding='max_length', add_special_tokens=True)
-    decoder_tokens = tokenizer(example[target_field_name], truncation='longest_first', max_length=96, padding='max_length', add_special_tokens=True)
+    encoder_tokens = tokenizer(example['source_text'], truncation='longest_first', max_length=416, padding='max_length', add_special_tokens=True)
+    decoder_tokens = tokenizer(example['target_text'], truncation='longest_first', max_length=96, padding='max_length', add_special_tokens=True)
     target_input_ids = np.copy(decoder_tokens['input_ids'])
 
     shifted_target_input_ids = shift_to_right(target_input_ids, tokenizer.pad_token_id)
     target_input_ids[target_input_ids == tokenizer.pad_token_id] = -100
 
     return {
-        'input_ids': encoder_inputs['input_ids'],
-        'attention_mask': encoder_inputs['attention_mask'],
+        'input_ids': encoder_tokens['input_ids'],
+        'attention_mask': encoder_tokens['attention_mask'],
         'target_ids': target_input_ids.tolist(),
-        'target_attention_mask': decoder_inputs['attention_mask'],
+        'target_attention_mask': decoder_tokens['attention_mask'],
         'shifted_target_input_ids': shifted_target_input_ids.tolist()
     }
 
