@@ -214,7 +214,6 @@ class Pylines:
             for fn in self.input_fns:
                 for match in self._file_idx(idx, fn):
                     yield match
-
     
     def _file_idx(self, idx, fn):
         reader = get_read_fn(fn)
@@ -297,6 +296,11 @@ class Pylines:
             self.output_fn = output_fn
         else:
             raise ValueError('Output Filenames should be a string')
+
+    def iter(self):
+        for fn in self.input_fns:
+            for item in self._file_iter(fn):
+                yield item
 
     def parse(self, v):
         return parser.parse(v)
