@@ -4,10 +4,10 @@ from . import line_count, create_idx_key, get_idx_key, get_write_fn, get_read_fn
 from . import _env, parser, json, glob
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
-if _env['ray']:
-    import ray.util.multiprocessing as mp
-else:
-    import multiprocessing as mp
+#if _env['ray']:
+#    import ray.util.multiprocessing as mp
+#else:
+import multiprocessing as mp
 
 
 # https://stackoverflow.com/questions/620367/how-to-jump-to-a-particular-line-in-a-huge-text-file
