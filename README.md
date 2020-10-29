@@ -63,7 +63,7 @@ output_file = 'myoutputfile.json' # only takes a string right now
 pylines.set_writefile(output_file)
 
 write = pylines.write
-for item in pylines.iter():
+for item in pylines.as_iterator():
     # process items here
     write(item)
 
@@ -71,7 +71,7 @@ for item in pylines.iter():
 pylines.run_function(processor_function)
 
 # or get the results from the processor to do something else
-for result in pylines.run_function(processor_function, return_results=True):
+for result in pylines.as_function(processor_function):
     # do something with results
 
 '''
@@ -101,7 +101,7 @@ Pylines.write(x): Serializes and writes json to the output_fn and appends with a
 Pylines.find(key, value, results=['first', 'all'], filename=None): -> dict [generator]
 Yields results when key=value from file, assuming all lines have key within the line. If used with filename, will search that filename instead of added files, else will search through all files added. If results='first', will only return the first line that matches. If results='all', will return all lines in all file(s) that match.
 
-Pylines.iter(): -> dict [generator]
+Pylines.as_iterator(): -> dict [generator]
 Takes no args. Iterates over all files added and yields deserialized json lines.
 
 Pylines.merge(input_fns=None, output_fn=None):
@@ -113,13 +113,11 @@ If filename, will find the total number of lines in the file. Else will iterate 
 Pylines.stats -> dict [property] in {filename: {'read': int, 'missed': int}} for each filename that have been processed. Will reset upon each call of iterators.
 
 # Example usage below.
-Pylines.tokenize(tokenizer_fn, return_results=False, use_mp=[True, or int for num_processes]): -> tokenized examples to output_fn.
+Pylines.run_tokenizer(tokenizer_fn, use_mp=[True, or int for num_processes]): -> tokenized examples to output_fn.
 Iterates through all files and tokenizes with provided tokenizer_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
-If return_results=True, yields results as a generator.
 
-Pylines.run_function(iter_fn, return_results=False, use_mp=[True, or int for num_processes]): ->  results from function(line) to output_fn.
+Pylines.run_processor(iter_fn, use_mp=[True, or int for num_processes]): ->  results from function(line) to output_fn.
 Iterates through all files and tokenizes with provided iter_fn. use_mp = False will not use multiprocessing. Otherwise will use all available cores by default.
-If return_results=True, yields results as a generator.
 '''
 
 ```
@@ -179,26 +177,166 @@ def tokenize_fn(example):
     }
 
 # Initialize Pylines with input_fn and output_fn
-processor = Pylines(input_fn, output_fn, overwrite_output=False)
+pylines = Pylines(input_fn, output_fn, overwrite_output=False)
 
 # Pass the above tokenization function through, which will be serialized and used to process every line.
 # By default, use_mp=True will use all cores.
-processor.tokenize(tokenize_fn, use_mp=True)
+pylines.run_tokenizer(tokenize_fn, use_mp=True)
 # or use_mp=int will use that many processes in mp.Pool
-processor.tokenize(tokenize_fn, use_mp=4)
+pylines.run_tokenizer(tokenize_fn, use_mp=4)
 
 # or use as a generator
-for ex in processor.tokenize(tokenize_fn, use_mp=True, return_results=True):
+for ex in pylines.as_tokenizer(tokenize_fn, use_mp=True):
     # do something with ex
+
+# Or serialize to tfrecords by defining your dataset features
+
+dataset_features = {
+        'x': {
+            'names': ["input_ids", "attention_mask"]
+        },
+        'y': {
+            'names': ["target_ids", "target_attention_mask", "shifted_target_input_ids"]
+        }
+    }
+
+# will yield serialized examples after passing through tokenizer_fn if its provided.
+for x, ex in enumerate(pylines.as_encoder(dataset_features=dataset_features, tokenizer_fn=tokenize_fn, use_mp=1)):
+    if x == 5:
+        print(ex)
+
+# define a output_dir and it will write tfrecords
+output_dir = '/my/dataset/dir'
+pylines.run_encoder(dataset_features=dataset_features, tokenizer_fn=tokenize_fn, output_dir=output_dir, split_key=None, use_mp=1)
+
 
 ```
 
 Roadmap:
 
-- Different format of serialization outputs (pickle, torch, tfrecords)
+- Different format of serialization outputs (pickle, torch) // tfrecords done
 - Creation of Dataset objects for Tensorflow and Pytorch, to easily plug into training pipelines, with or without caching
 - Support for sharding of files rather than a single big output file
-- Conditional merging of input files
+- Conditional merging of input files // done
 - Support for mapping of jsonlines into functions
 - Allow for caching through redis backend
 - Creating an index file that maps keys <-> int to save precious bytes when writing large files
+  
+#### Automatically Reading/Writing to Object Storage
+
+By Default, upon init, Pylines will look for common environment variables including:
+- GOOGLE_APPLICATION_CREDENTIALS
+- AWS_SHARED_CREDENTIALS_FILE
+- AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+If those are set, then the associated client will be initialized
+- google.cloud.storage - GCS
+- boto3 - S3
+
+These will be passed to smart_open for S3, and GCS (if tensorflow is not installed).
+
+If these are not automatically detected during first initialization, they can also be explicitly set
+```python3
+
+import os
+from pylines import auth_cloud, Pylines
+
+# Can be set at the env level 
+os.environ["AWS_ACCESS_KEY_ID"] = ''
+os.environ["AWS_SECRET_ACCESS_KEY"] = ''
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = '/path/to/adc.json'
+os.environ["AWS_SHARED_CREDENTIALS_FILE"] = '/path/to/file'
+
+auth_cloud()
+
+# or passed explictly
+my_gcs_cred = '/path/to/adc.json'
+my_s3_cred = '/path/to/file'
+
+auth_cloud(gcs=my_gcs_cred, s3=my_s3_cred)
+
+# or passed as a dict, only for s3
+
+s3 = {
+    'aws_access_key_id': 'key',
+    'aws_secret_access_key': 'key'
+}
+auth_cloud(gcs=my_gcs_cred, s3=s3)
+```
+
+#### Built in Generators and Writers
+Pylines has several built in iterators that follow the same pattern, making it simple to switch between a generator and writing to a file
+
+```python3
+
+from pylines import Pylines
+
+input_fn = 'myinputfile.json'
+output_fn = 'tokenized_file.json'
+
+# as_* indicates a generator, yielding results
+# run_* indicates a writer, no returns
+
+pylines = Pylines(input_file, output_file)
+
+# Assuming defined functions
+
+for result in pylines.as_tokenizer(tokenizer_function):
+    yield result
+
+# Then to write it all to file after verifying the results
+
+pylines.run_tokenizer(tokenizer_function)
+
+# Other functions
+
+# Maps each line in the file to a custom defined processor function. expects a result
+pylines.as_processor(custom_processor_function) -> Generator
+pylines.run_processor(custom_processor_function) -> Writer
+
+# Takes a filter function for each key, with 'bypass' being keys that are ignored.
+# As such, since the function can also return a different value, the output from the filter function will update the value
+# Filter function must either return None or a value.
+# Example:
+# filter_funcs = {'text': text_filter_fuc, 'target': text_processor_func, 'idx': filter_idx_func, 'bypass': ['key_1', 'key_2']}
+
+pylines.as_filter(custom_processor_function) -> Generator
+pylines.run_filter(custom_processor_function) -> Writer
+
+# Encoder only supports tensorflow records at this time.
+
+# Options 
+# output_dir, dataset_features=None, tokenizer_fn=None, serialization='tf',
+# input_fns=None, start_idx=1, split_key='split', split='train', 
+# write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, 
+# use_tempdir=False, use_mp=True
+
+# Requires an output_dir, dataset_features, and tokenizer_fn if not passed previously.
+# For gs backed object storage, you can write directly to gs. If it's s3, it will create a temporary dir, and upon completion, run a background
+# Thread to copy/move the file to s3.
+# You can explicitly set use_tempdir=True to use local_storage during write, and it will write to local first.
+
+# Write String requires two placeholders, which is formatted using 'split' and the current shard count.
+# If files are detected in the dir, the shard count will automatically be the next shard number, preventing overwrites, unless explicitly called, or start_idx!=1.
+
+# if multiple splits exist in the dataset, you can set split_key to the key that your split is defined as, and split to the value.
+# It will run a filter to find all the items that match split_key=split before encoding.
+# If no split_key exists in the dataset, set split_key=None which will process the entire dataset without filtering
+
+# Expected Dataset Features Format:
+
+dataset_features = {
+        'x': {
+            'names': ["input_ids", "attention_mask"]
+        },
+        'y': {
+            'names': ["target_ids", "target_attention_mask", "shifted_target_input_ids"]
+        }
+    }
+
+pylines.as_encoder(dataset_features=dataset_features, tokenizer_fn=tokenize_fn, split_key=None, use_mp=1) -> Generator
+
+# Only output_dir is required for run_encoder
+pylines.run_encoder(dataset_features=dataset_features, tokenizer_fn=tokenize_fn, output_dir=output_dir, split_key=None, use_mp=1) -> Writer
+
+```
