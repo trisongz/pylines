@@ -4,12 +4,15 @@ from . import line_count, create_idx_key, get_idx_key, get_write_fn, get_read_fn
 from . import _env, parser, json, glob, Timer
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
+if _env['tf']:
+    from .tflow import setup_tf_serialization_features, serialize_example, SerializeWorker, TFRWriter, _tf_dataset_features, _tf_example_features
+
 #if _env['ray']:
 #    import ray.util.multiprocessing as mp
 #else:
 from .logger import get_logger
 import multiprocessing as mp
-
+import hashlib
 logger = get_logger()
 
 # https://stackoverflow.com/questions/620367/how-to-jump-to-a-particular-line-in-a-huge-text-file
@@ -104,11 +107,11 @@ class LazyLoadFile:
 
 def setup_tokenize_fn(tokenizer_fn):
     assert _env['transformers'], 'Transformers must be installed to use tokenize function'
-    global tokenize_fn
-    tokenize_fn = tokenizer_fn
+    global _tokenize_fn
+    _tokenize_fn = tokenizer_fn
 
 def TokenizerWorker(ex):
-    result = tokenize_fn(ex)
+    result = _tokenize_fn(ex)
     return result
 
 def setup_iter_fn(iter_fn):
@@ -119,12 +122,38 @@ def IterWorker(ex):
     result = _iter_func(ex)
     return result
 
+def setup_filter_fns(filter_fns):
+    global _filter_func
+    _filter_func = filter_fns
+
+def FilterWorker(ex):
+    result = {}
+    for key in ex:
+        if key not in _filter_func['bypass'] and key in _filter_func:
+            res = _filter_func[key](ex[key])
+            if res:
+                result[key] = res
+        elif key in _filter_func['bypass']:
+            result[key] = ex[key]
+    if bool(result):
+        return None
+    return result
+
+
 def FileIterator(filename):
     with get_read_fn(filename) as f:
         for line in f:
             yield parser.parse(line).as_dict()
     raise StopIteration
 
+
+def make_hashes(inputs):
+    return hashlib.sha256(str.encode(inputs)).hexdigest()
+
+def check_hashes(inputs, hashed_text):
+	if make_hashes(inputs) == hashed_text:
+		return hashed_text
+	return False
 
 class Pylines:
     def __init__(self, input_fns=None, output_fn=None, skip_broken=True, overwrite_output=False, use_lazy=False, use_mp=True, use_idx=False, total_lines=0):
@@ -134,89 +163,157 @@ class Pylines:
         self.input_fns, self.output_fn = None, None
         self.stats = {}
         self.timer = Timer()
-        if input_fns:
-            self._setup_input_fns(input_fns)
-            
-        if output_fn:
-            self._setup_output_fn(output_fn)
+        self._io(input_fns, output_fn)
     
-    def tokenize(self, tokenizer_fn, return_results=False, input_fns=None, output_fn=None, use_mp=True):
-        setup_tokenize_fn(tokenizer_fn)
-        if input_fns:
-            self._setup_input_fns(input_fns)
-        if output_fn:
-            self._setup_output_fn(output_fn)
+    def as_tokenizer(self, tokenizer_fn=None, input_fns=None, use_mp=True):
+        if tokenizer_fn:
+            setup_tokenize_fn(tokenizer_fn)
+        assert _tokenize_fn, 'tokenizer_fn must first be set before being able to run'
+        self._io(input_fns, output_fn=None)
+        for result in self._as_iter(_tokenize_fn, TokenizerWorker, use_mp, desc='Tokenization'):
+            yield result
+        logger.info(f'{self.timer.stop()} for Tokenizing {self.total_lines} Items')
 
-        pbar = trange(self.total_lines, desc='Tokenization') if _env['tqdm'] else None
-        self.timer.start('Tokenization')
+    def run_tokenizer(self, tokenizer_fn=None, input_fns=None, output_fn=None, use_mp=True):
+        self._io(input_fns, output_fn)
+        for result in self.as_tokenizer(tokenizer_fn=tokenizer_fn, use_mp=use_mp):
+            self.write(result)
+        self.flush()
+
+    def as_processor(self, iter_func=None, input_fns=None, use_mp=True):
+        if iter_func:
+            setup_iter_fn(iter_func)
+        assert _iter_func, 'iter_func must first be set before running'
+        self._io(input_fns, output_fn=None)
+        for result in self._as_iter(_iter_func, IterWorker, use_mp, desc='Iterator Function'):
+            yield result
+        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
+
+    def run_processor(self, iter_func=None, input_fns=None, output_fn=None, use_mp=True):
+        self._io(input_fns, output_fn)
+        for result in self.as_processor(iter_func=iter_func, use_mp=use_mp):
+            self.write(result)
+        self.flush()
+
+    # filter_funcs = {'text': filter_fuc, 'target': filter_func, 'idx': filter_func, 'bypass': ['key_1', 'key_2']}
+    def as_filter(self, filter_funcs=None, input_fns=None, use_mp=True):
+        if filter_funcs:
+            setup_filter_fns(filter_funcs)
+        assert _filter_func, 'filter_funcs must first be set before running'
+        self._io(input_fns, output_fn=None)
+        for result in self._as_iter(FilterWorker, FilterWorker, use_mp, desc='Filtering Items'):
+            yield result
+        logger.info(f'{self.timer.stop()} for Filtering {self.total_lines} Items')
+    
+    def run_filter(self, filter_funcs=None, input_fns=None, output_fn=None, use_mp=True):
+        self._io(input_fns, output_fn)
+        for result in self.as_filter(filter_funcs=filter_funcs, use_mp=use_mp):
+            self.write(result)
+        self.flush()
+    
+    def as_encoder(self, dataset_features=None, serialization='tf', tokenizer_fn=None, input_fns=None, use_mp=True):
+        _methods = ['tf']
+        assert serialization in _methods, f'Currently only {_methods} are supported'
+        assert _env['tf'], 'Tensorflow is required to run Serialization'
+        if dataset_features:
+            for axis in dataset_features:
+                assert 'name' in dataset_features[axis], 'name is a required key for dataset features.'
+            
+            setup_tf_serialization_features(dataset_features)
+        assert _tf_dataset_features and _tf_example_features, 'Dataset features must first be set.'
+        self._io(input_fns, output_fn=None)
+        all_results = list()
+        if tokenizer_fn or tokenizer_fn:
+            for result in self.as_tokenizer(tokenizer_fn, use_mp=use_mp):
+                all_results.append(result)
+        else:
+            logger.warning(f'No Tokenizer Function is Found. Assuming Input Files are Pretokenized.')
+            for result in self.as_iterator():
+                all_results.append(result)
+        
+        for serialized_ex in self._as_iter_items(all_results, serialize_example, SerializeWorker, use_mp=use_mp, desc=f'Serializing to {serialization}'):
+            yield serialized_ex
+        logger.info(f'{self.timer.stop()} for Serializing {len(all_results)} Examples')
+
+    def run_encoder(self, dataset_features=None, serialization='tf', tokenizer_fn=None, input_fns=None, output_dir=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
+        self._io(input_fns, output_fn=None)
+        _total_match = self.count_matching(split_key, split)
+        with TFRWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir) as writer:
+            for serialized_ex in self.as_encoder(dataset_features, serialization, tokenizer_fn, use_mp=use_mp):
+                writer.write(serialized_ex)
+        
+        writer.close()
+
+
+    def _as_iter(self, IterFunc, Worker, use_mp, desc):
+        pbar = trange(self.total_lines, desc=desc) if _env['tqdm'] else None
+        self.timer.start(desc)
         if use_mp:
             if isinstance(use_mp, int):
                 pool = mp.Pool(use_mp)
             else:
                 pool = mp.Pool()
             for fn in self.input_fns:
-                for result in pool.imap_unordered(TokenizerWorker, FileIterator(fn)):
-                    if return_results:
-                        yield result
-                    else:
-                        self.write(result)
+                for result in pool.imap_unordered(Worker, FileIterator(fn)):
+                    yield result
                     if pbar:
                         pbar.update()
-                self.flush()
             
         else:
             for fn in self.input_fns:
                 for result in self._file_iter(fn):
-                    ex = tokenizer_fn(result)
-                    if return_results:
-                        yield ex
-                    else:
-                        self.write(ex)
+                    ex = IterFunc(result)
+                    yield ex
                     if pbar:
                         pbar.update()
-                self.flush()
         if pbar:
             pbar.close()
-        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
 
-    def run_function(self, iter_func, return_results=False, input_fns=None, output_fn=None, use_mp=True):
-        setup_iter_fn(iter_func)
-        if input_fns:
-            self._setup_input_fns(input_fns)
-        if output_fn:
-            self._setup_output_fn(output_fn)
-
-        pbar = trange(self.total_lines, desc='Iterator Function') if _env['tqdm'] else None
-        self.timer.start('Iterator Function')
+    def _as_iter_items(self, items, IterFunc, Worker, use_mp, desc):
+        pbar = trange(len(items), desc=desc) if _env['tqdm'] else None
+        self.timer.start(desc)
         if use_mp:
             if isinstance(use_mp, int):
                 pool = mp.Pool(use_mp)
             else:
                 pool = mp.Pool()
-            for fn in self.input_fns:
-                for result in pool.imap_unordered(IterWorker, FileIterator(fn)):
-                    if return_results:
-                        yield result
-                    else:
-                        self.write(result)
-                    if pbar:
-                        pbar.update()
-                self.flush()
+            for result in pool.imap_unordered(Worker, items):
+                yield result
+                if pbar:
+                    pbar.update()
             
         else:
-            for fn in self.input_fns:
-                for result in self._file_iter(fn):
-                    ex = iter_func(result)
-                    if return_results:
-                        yield ex
-                    else:
-                        self.write(ex)
-                    if pbar:
-                        pbar.update()
-                self.flush()
+            for item in items:
+                ex = IterFunc(item)
+                yield ex
+                if pbar:
+                    pbar.update()
         if pbar:
             pbar.close()
-        logger.info(f'{self.timer.stop()} for {self.total_lines} Items')
+
+    def deduplicate(self, keys, input_fns=None, output_fn=None, write=True):
+        self._io(input_fns, output_fn)
+        _sets = {}
+        results = list()
+        assert _io_type(keys) == 'list', 'Keys must be in the form of a list'
+        for key in keys:
+            _sets[key] = set()
+        for result in self.as_iterator():
+            _pass = True
+            for k in keys:
+                hashed_key = make_hashes(result[k])
+                if hashed_key in _sets[k]:
+                    _pass = False
+                else:
+                    _sets[k].add(hashed_key)
+            if _pass:
+                if write:
+                    self.write(result)
+                else:
+                    results.append(result)
+        
+        if not write:
+            return results
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
@@ -255,13 +352,10 @@ class Pylines:
                     break
     
     def merge(self, input_fns=None, output_fn=None):
-        if input_fns:
-            self._setup_input_fns(input_fns)
-        if output_fn:
-            self._setup_output_fn(output_fn)
+        self._io(input_fns, output_fn)
         pbar = trange(self.total_lines, desc=f'Merging {len(self.input_fns)} Files') if _env['tqdm'] else None
         self.timer.start(f'Merging {len(self.input_fns)} Files')
-        for result in self.iter():
+        for result in self.as_iterator():
             self.write(result)
             if pbar:
                 pbar.update()
@@ -270,6 +364,14 @@ class Pylines:
             pbar.close()
         logger.info(f'{self.timer.stop()} with {self.total_lines} Items to {self.output_fn}')
         
+    def count_matching(self, key, value, input_fns=None):
+        _matches = 0
+        self._io(input_fns)
+        for result in self.as_iterator():
+            if result[key] == value:
+                _matches += 1
+        
+        return _matches
 
     def write(self, item):
         if not self.writer:
@@ -289,6 +391,48 @@ class Pylines:
                 results[fn] = self._file_idx(idx, fn)
             return results
     
+    def to_dict(self, input_fns=None):
+        results = {}
+        self._io(input_fns)
+        for result in self.as_iterator():
+            for key in result:
+                if key not in results:
+                    results[key] = {'items': [result[key]], 'count': 1}
+                else:
+                    results[key]['items'].append(result[key])
+                    results[key]['count'] += 1
+        
+        return results
+
+    def to_list(self, input_fns=None):
+        results = list()
+        self._io(input_fns)
+        for result in self.as_iterator():
+            results.append(result)
+        return results
+
+    def from_list(self, all_items, output_fn=None):
+        self._io(input_fns=None, output_fn=output_fn)
+        assert _io_type(all_items) == 'list', 'This function must be used with a list'
+        for item in all_items:
+            self.write(item)
+
+    def to_batches(self, all_items, batch_size=2):
+        all_batches = list()
+        for batch in self._build_batches(all_items, batch_size):
+            all_batches += [batch]
+        return all_batches
+
+    def as_iterator(self):
+        for fn in self.input_fns:
+            for item in self._file_iter(fn):
+                yield item
+
+
+    def _build_batches(self, lst, batch_size):
+        for i in range(0, len(lst), batch_size):
+            yield lst[i:i + batch_size]
+
     def _file_idx(self, idx, fn):
         reader = get_read_fn(fn)
         for x, line in enumerate(reader):
@@ -342,6 +486,11 @@ class Pylines:
             for result in self._file_iter(fn):
                 yield result
     
+    def _io(self, input_fns=None, output_fn=None):
+        if input_fns:
+            self._setup_input_fns(input_fns)
+        if output_fn:
+            self._setup_output_fn(output_fn)
 
     def _setup_input_fns(self, input_fns):
         in_files = []
@@ -373,10 +522,6 @@ class Pylines:
         else:
             raise ValueError('Output Filenames should be a string')
 
-    def iter(self):
-        for fn in self.input_fns:
-            for item in self._file_iter(fn):
-                yield item
 
     def parse(self, v):
         return parser.parse(v)
@@ -401,8 +546,6 @@ class Pylines:
 
     def clear_input_files(self):
         self.stats = {}
-        #self.lineidx = 0
-        #self.badidx = 0
         self.input_fns = None
 
     def set_input_files(self, input_fns):
@@ -434,6 +577,7 @@ class Pylines:
         for fn in self.input_fns:
             results[fn] = line_count(fn)
         return results
+
 
     def __len__(self):
         return self.total_lines        

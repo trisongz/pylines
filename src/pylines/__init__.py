@@ -13,12 +13,14 @@ import os
 import subprocess
 import simdjson as json
 import time
+import tempfile
 
 parser = json.Parser()
 
 try:
     import tensorflow as tf
     glob = tf.io.gfile.glob
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = 3
     _tf_available = True
 except ImportError:
     import glob
@@ -75,8 +77,37 @@ try:
 except ImportError:
     _gcs_available = False
 
+try:
+    import boto3
+    _S3_ID = os.environ.get("AWS_ACCESS_KEY_ID", None)
+    _S3_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+    _BOTO_PATH_1 = os.environ.get("AWS_SHARED_CREDENTIALS_FILE", None)
+    _BOTO_PATH_2 = os.path.exists(os.path.join(os.environ.get("HOME", "/root"), ".aws/credentials"))
+    _BOTO_PATH_3 = os.environ.get("BOTO_CONFIG", None)
+
+    _BOTO_PATH_4 = os.environ.get("BOTO_PATH", None)
+    _BOTO_PATH_5 = os.path.exists(os.path.join(os.environ.get("HOME", "/root"), ".boto"))
+
+    if _S3_ID and _S3_KEY:
+        s3_client = boto3.Session(aws_access_key_id=_S3_ID, aws_secret_access_key=_S3_KEY)
+    elif _BOTO_PATH_1 or _BOTO_PATH_2 or _BOTO_PATH_3:
+        s3_client = boto3.Session()
+    elif _BOTO_PATH_4:
+        os.environ['BOTO_CONFIG'] = _BOTO_PATH_4
+        s3_client = boto3.Session()
+    elif _BOTO_PATH_5:
+        os.environ['BOTO_CONFIG'] = _BOTO_PATH_5
+        s3_client = boto3.Session()
+    else:
+        _s3_available = False
+except ImportError:
+    _s3_available = False
+
+
+
 _env = {
     'gcs': _gcs_available,
+    's3': _s3_available,
     'transformers': _transformers_available,
     'smartopen': _smartopen_available,
     'torch': _torch_available,
@@ -86,6 +117,91 @@ _env = {
 }
 
 
+def auth_cloud(gcs=None, s3=None):
+    # expects a json file for gcs
+    global _gcs_available, _s3_available, s3_client, gcp_client, gcp_storage_client
+    if gcs:
+        try:
+            gcp_client = service_account.Credentials.service_account_info = json.load(open(gcs, 'r'))
+            gcp_storage_client = storage.Client.from_service_account_json(gcs)
+            _gcs_available = True
+        except Exception as e:
+            print(f'Unable to Authenticate GCS: {str(e)}')
+            _gcs_available = False
+
+    if s3:
+        if _io_type(s3) == 'str' and os.path.exists(s3):
+            os.environ['AWS_SHARED_CREDENTIALS_FILE'] = s3
+            try:
+                s3_client = boto3.Session()
+                _s3_available = True
+            except Exception as e:
+                print(f'Unable to Authenticate S3: {str(e)}')
+                _s3_available = False
+        elif _io_type(s3) == 'dict':
+            if 'aws_access_key_id' in s3 and 'aws_secret_access_key' in s3:
+                try:
+                    s3_client = boto3.Session(aws_access_key_id=s3['aws_access_key_id'], aws_secret_access_key=s3['aws_secret_access_key'])
+                    _s3_available = True
+                except Exception as e:
+                    print(f'Unable to Authenticate S3: {str(e)}')
+                    _s3_available = False
+            elif 'aws_access_key_id'.upper() in s3 and 'aws_secret_access_key'.upper() in s3:
+                try:
+                    s3_client = boto3.Session(aws_access_key_id=s3['aws_access_key_id'.upper()], aws_secret_access_key=s3['aws_secret_access_key'.upper()])
+                    _s3_available = True
+                except Exception as e:
+                    print(f'Unable to Authenticate S3: {str(e)}')
+                    _s3_available = False
+            elif 'AWS_SHARED_CREDENTIALS_FILE' in s3:
+                os.environ['AWS_SHARED_CREDENTIALS_FILE'] = s3
+                try:
+                    s3_client = boto3.Session()
+                    _s3_available = True
+                except Exception as e:
+                    print(f'Unable to Authenticate S3: {str(e)}')
+                    _s3_available = False
+    else:
+        _S3_ID = os.environ.get("AWS_ACCESS_KEY_ID", None)
+        _S3_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+        _S3_PATH = os.environ.get("AWS_SHARED_CREDENTIALS_FILE", None)
+        _GCS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", None)
+        if not _s3_available:
+            if _S3_ID and _S3_KEY:
+                try:
+                    s3_client = boto3.Session(aws_access_key_id=_S3_ID, aws_secret_access_key=_S3_KEY)
+                    _s3_available = True
+                except Exception as e:
+                    print(f'Unable to Authenticate S3: {str(e)}')
+                    _s3_available = False
+            elif _S3_PATH:
+                try:
+                    os.environ['AWS_SHARED_CREDENTIALS_FILE'] = _S3_PATH
+                    s3_client = boto3.Session()
+                    _s3_available = True
+                except Exception as e:
+                    print(f'Unable to Authenticate S3: {str(e)}')
+                    _s3_available = False
+        if not _gcs_available and _GCS_PATH:
+            try:
+                gcp_client = service_account.Credentials.service_account_info = json.load(open(_GCS_PATH, 'r'))
+                gcp_storage_client = storage.Client.from_service_account_json(_GCS_PATH)
+                _gcs_available = True
+            except Exception as e:
+                print(f'Unable to Authenticate GCS: {str(e)}')
+                _gcs_available = False
+
+    if _gcs_available:
+        print('Authenticated GCS')
+    else:
+        gcp_client = None
+        gcp_storage_client = None
+
+    if _s3_available:
+        print('Authenticated S3')
+    else:
+        s3_client = None
+
 def get_read_fn(filename):
     if filename.startswith('gs://'):
         if _tf_available:
@@ -93,11 +209,16 @@ def get_read_fn(filename):
         elif _smartopen_available:
             if _gcs_available:
                 return smart_open.open(filename, 'rb', transport_params=dict(client=gcp_storage_client))
+            else:
+                return smart_open.open(filename, 'rb')
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
-            return smart_open.open(filename, 'rb')
+            if _s3_available:
+                return smart_open.open(filename, 'rb', transport_params={'session': s3_client})
+            else:
+                return smart_open.open(filename, 'rb')
         else:
             raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
@@ -140,11 +261,16 @@ def get_write_fn(filename, overwrite=False):
         elif _smartopen_available:
             if _gcs_available:
                 return smart_open.open(filename, _write_mode, transport_params=dict(client=gcp_storage_client))
+            else:
+                return smart_open.open(filename, _write_mode)
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
-            return smart_open.open(filename, _write_mode)
+            if _s3_available:
+                return smart_open.open(filename, _write_mode, transport_params={'session': s3_client})
+            else:
+                return smart_open.open(filename, _write_mode)
         else:
             raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
@@ -232,6 +358,7 @@ class Timer:
         time_string = f'- Total Time for {self.task}: {(stop_time - self.start_time) / 60:.2f} mins / {(stop_time - self.start_time) :.2f} secs'
         self.start_time = 0
         return time_string
+
 
 from . import logger
 from . import io
