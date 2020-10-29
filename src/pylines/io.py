@@ -217,7 +217,7 @@ class Pylines:
         assert _env['tf'], 'Tensorflow is required to run Serialization'
         if dataset_features:
             for axis in dataset_features:
-                assert 'name' in dataset_features[axis], 'name is a required key for dataset features.'
+                assert 'names' in dataset_features[axis], 'names is a required key for dataset features.'
             
             setup_tf_serialization_features(dataset_features)
         assert _tf_dataset_features and _tf_example_features, 'Dataset features must first be set.'
