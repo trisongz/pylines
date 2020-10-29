@@ -241,7 +241,7 @@ class Pylines:
             for serialized_ex in self.as_encoder(dataset_features, tokenizer_fn, use_mp=use_mp):
                 writer.write(serialized_ex)
         
-        writer.close()
+        #writer.close()
 
 
     def _as_iter(self, IterFunc, Worker, use_mp, desc):
@@ -477,6 +477,7 @@ class Pylines:
             for fn in input_fns:
                 self.total_lines += line_count(fn)
         else:
+            self.total_lines = 0
             for fn in self.input_fns:
                 self.total_lines += line_count(fn)
 
@@ -488,6 +489,7 @@ class Pylines:
     def _io(self, input_fns=None, output_fn=None):
         if input_fns:
             self._setup_input_fns(input_fns)
+            self._get_file_lines()
         if output_fn:
             self._setup_output_fn(output_fn)
 
@@ -509,11 +511,10 @@ class Pylines:
         
         if self.input_fns:
             in_files = [f for f in in_files if f not in self.input_fns]
-            self.input_fns += in_files
-            self._get_file_lines(in_files)
+            if len(in_files) != 0:
+                self.input_fns += in_files
         else:
             self.input_fns = in_files
-            self._get_file_lines()
     
     def _setup_output_fn(self, output_fn):
         if _io_type(output_fn) == 'str':
