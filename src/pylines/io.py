@@ -211,7 +211,7 @@ class Pylines:
             self.write(result)
         self.flush()
     
-    def as_encoder(self, dataset_features=None, serialization='tf', tokenizer_fn=None, input_fns=None, use_mp=True):
+    def as_encoder(self, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, use_mp=True):
         _methods = ['tf']
         assert serialization in _methods, f'Currently only {_methods} are supported'
         assert _env['tf'], 'Tensorflow is required to run Serialization'
@@ -222,7 +222,7 @@ class Pylines:
 
         self._io(input_fns, output_fn=None)
         all_results = list()
-        if tokenizer_fn or tokenizer_fn:
+        if _tokenize_fn or tokenizer_fn:
             for result in self.as_tokenizer(tokenizer_fn, use_mp=use_mp):
                 all_results.append(result)
         else:
@@ -234,11 +234,11 @@ class Pylines:
             yield serialized_ex
         logger.info(f'{self.timer.stop()} for Serializing {len(all_results)} Examples')
 
-    def run_encoder(self, dataset_features=None, serialization='tf', tokenizer_fn=None, input_fns=None, output_dir=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
+    def run_encoder(self, output_dir, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
         self._io(input_fns, output_fn=None)
-        _total_match = self.count_matching(split_key, split)
+        _total_match = self.count_matching(split_key, split) if split_key else self.total_lines
         with TFRWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir) as writer:
-            for serialized_ex in self.as_encoder(dataset_features, serialization, tokenizer_fn, use_mp=use_mp):
+            for serialized_ex in self.as_encoder(dataset_features, tokenizer_fn, use_mp=use_mp):
                 writer.write(serialized_ex)
         
         writer.close()
