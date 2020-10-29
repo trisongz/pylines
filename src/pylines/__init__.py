@@ -20,7 +20,7 @@ parser = json.Parser()
 try:
     import tensorflow as tf
     glob = tf.io.gfile.glob
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = 3
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     _tf_available = True
 except ImportError:
     import glob
