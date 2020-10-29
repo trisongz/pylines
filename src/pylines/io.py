@@ -372,6 +372,17 @@ class Pylines:
         
         return _matches
 
+    def verify_linecount(self):
+        _idx = 0
+        for result in self.as_iterator():
+            if result and result != '':
+                _idx += 1
+
+        logger.info(f'Original Count: {self.total_lines} Verified Count: {_idx}')
+        if _idx >= self.total_lines:
+            self.total_lines = _idx
+        return _idx
+
     def write(self, item):
         if not self.writer:
             assert self.output_fn, 'Output File must be set prior to write. call .writefile(filename) to set the output file'
