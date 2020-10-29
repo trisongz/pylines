@@ -73,8 +73,10 @@ try:
             gcp_storage_client = storage.Client.from_service_account_json(USE_GCS)
             _gcs_available = True
         else:
+            gcp_client, gcp_storage_client = None, None
             _gcs_available = False
 except ImportError:
+    gcp_client, gcp_storage_client = None, None
     _gcs_available = False
 
 try:
@@ -89,6 +91,7 @@ try:
     _BOTO_PATH_4 = os.environ.get("BOTO_PATH", None)
     _BOTO_PATH_5 = os.path.join(os.environ.get("HOME", "/root"), ".boto")
     _BOTO_PATH_5_EXISTS = os.path.exists(_BOTO_PATH_5)
+    s3_client = None
 
     if _S3_ID and _S3_KEY:
         s3_client = boto3.Session(aws_access_key_id=_S3_ID, aws_secret_access_key=_S3_KEY)
@@ -100,10 +103,14 @@ try:
     elif _BOTO_PATH_5_EXISTS:
         os.environ['BOTO_CONFIG'] = _BOTO_PATH_5
         s3_client = boto3.Session()
+    
+    if s3_client:
+        _s3_available = True
     else:
         _s3_available = False
 except ImportError:
     _s3_available = False
+    s3_client = None
 
 
 
