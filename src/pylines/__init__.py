@@ -82,20 +82,22 @@ try:
     _S3_ID = os.environ.get("AWS_ACCESS_KEY_ID", None)
     _S3_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
     _BOTO_PATH_1 = os.environ.get("AWS_SHARED_CREDENTIALS_FILE", None)
-    _BOTO_PATH_2 = os.path.exists(os.path.join(os.environ.get("HOME", "/root"), ".aws/credentials"))
+    _BOTO_PATH_2 = os.path.join(os.environ.get("HOME", "/root"), ".aws/credentials")
+    _BOTO_PATH_2_EXISTS = os.path.exists(_BOTO_PATH_2)
     _BOTO_PATH_3 = os.environ.get("BOTO_CONFIG", None)
 
     _BOTO_PATH_4 = os.environ.get("BOTO_PATH", None)
-    _BOTO_PATH_5 = os.path.exists(os.path.join(os.environ.get("HOME", "/root"), ".boto"))
+    _BOTO_PATH_5 = os.path.join(os.environ.get("HOME", "/root"), ".boto")
+    _BOTO_PATH_5_EXISTS = os.path.exists(_BOTO_PATH_5)
 
     if _S3_ID and _S3_KEY:
         s3_client = boto3.Session(aws_access_key_id=_S3_ID, aws_secret_access_key=_S3_KEY)
-    elif _BOTO_PATH_1 or _BOTO_PATH_2 or _BOTO_PATH_3:
+    elif _BOTO_PATH_1 or _BOTO_PATH_2_EXISTS or _BOTO_PATH_3:
         s3_client = boto3.Session()
     elif _BOTO_PATH_4:
         os.environ['BOTO_CONFIG'] = _BOTO_PATH_4
         s3_client = boto3.Session()
-    elif _BOTO_PATH_5:
+    elif _BOTO_PATH_5_EXISTS:
         os.environ['BOTO_CONFIG'] = _BOTO_PATH_5
         s3_client = boto3.Session()
     else:
