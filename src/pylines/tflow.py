@@ -102,13 +102,14 @@ class TFRWriter(object):
         self._usetmp = use_tempdir
         self._shardsize = self._total if self._total < self._shardsize else self._shardsize
         self._numfiles = math.ceil(self._total / self._shardsize)
-        self.pbar = trange(self._total, desc=f"[{self._split}] TFR File Writer", dynamic_ncols=True) if _env['tqdm'] else None
+        self.pbar = trange(self._total, desc=f"[{self._split}] TFRecords Writer", dynamic_ncols=True) if _env['tqdm'] else None
         self._setup_files()
         self.fn = self.openfile()
         self.filename = self.fn.filename
         self.writer = self.fn.write
         self.timer = Timer()
         logger.info(f"- Writer Config for Split [{self._split}] -> Shard Size/Num Ex per Record: {self._shardsize}, Total Items: {self._total}, Write Path: {self._dir}, Number of Files: {self._numfiles}")
+        self.timer.start('TFRecords Writer')
 
     def write(self, x):
         if self.curr_idx >= self._shardsize:
@@ -139,7 +140,7 @@ class TFRWriter(object):
         _tmpfile = os.path.join(self._tmpdir, filename) if self._tmpdir else None
         _file = TFileIO(outfile=_outfile, tmpfile=_tmpfile, copy=self._copy, gcopy=self._gcopy, remove_tmp=True)
         if self.pbar:
-            self.pbar.set_description(f"[{self._split}] TFR File Writer -> {filename}")
+            self.pbar.set_description(f"[{self._split}] TFRecords Writer: {filename}")
         return _file
 
     def _init_stats(self):
