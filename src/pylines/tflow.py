@@ -10,8 +10,6 @@ if _env['tqdm']:
 from .logger import get_logger
 logger = get_logger()
 
-_tf_example_features, _tf_dataset_features = None, None
-
 '''
 dataset_features = {
         'x': {

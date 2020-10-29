@@ -5,7 +5,7 @@ from . import _env, parser, json, glob, Timer
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
 if _env['tf']:
-    from .tflow import setup_tf_serialization_features, serialize_example, SerializeWorker, TFRWriter, _tf_dataset_features, _tf_example_features
+    from .tflow import setup_tf_serialization_features, serialize_example, SerializeWorker, TFRWriter
 
 #if _env['ray']:
 #    import ray.util.multiprocessing as mp
@@ -218,9 +218,8 @@ class Pylines:
         if dataset_features:
             for axis in dataset_features:
                 assert 'names' in dataset_features[axis], 'names is a required key for dataset features.'
-            
             setup_tf_serialization_features(dataset_features)
-        assert _tf_dataset_features and _tf_example_features, 'Dataset features must first be set.'
+
         self._io(input_fns, output_fn=None)
         all_results = list()
         if tokenizer_fn or tokenizer_fn:
