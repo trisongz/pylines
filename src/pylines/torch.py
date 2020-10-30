@@ -251,7 +251,9 @@ class DynamicCollate:
             self._nopad = []
     
     def __call__(self, batch):
-        batch_dict = self._basedict
+        batch_dict = {}
+        for key in self._datakeys:
+            batch_dict[key] = list()
         max_size = max([len(example[self._inputkey]) for example in batch])
         #for key in self._datakeys:
         for example in batch:
