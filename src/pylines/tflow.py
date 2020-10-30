@@ -296,7 +296,7 @@ class TFDatasetFromTensors:
                 if name in self._features[i]:
                     _ds[i][name] = dataset[name]
 
-        return (_ds[i] for i in self.num_axis)
+        return (_ds[i] for i in self.axis)
     
     def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
         _dataset = self.datasets[split]['examples']
@@ -391,7 +391,7 @@ class TFRDataset:
                 if name in self._features[i]:
                     _rec[i][name] = record[name]
 
-        return (_rec[i] for i in self.num_axis)
+        return (_rec[i] for i in self.axis)
 
     def parse_example(self, serialized_example):
         example = tf.io.parse_single_example(serialized_example, self._datafields)
