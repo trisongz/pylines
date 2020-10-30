@@ -13,7 +13,7 @@ if _env['tqdm']:
     from tqdm.auto import tqdm, trange
 if _env['numpy']:
     import numpy as np
-if _env['tensorflow']:
+if _env['tf']:
     import tensorflow as tf
 import random
 from .logger import get_logger
