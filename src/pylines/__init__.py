@@ -453,3 +453,8 @@ def iterator_function(function=None, **kwargs):
 from . import logger
 from . import io
 from .io import Pylines, LazyLoadFile, LineSeekableFile
+
+if _env['torch']:
+    from .torch import DynamicCollate, PylinesDatasetFromIterator, PylinesIterableFunctionDataset, PylinesDataset
+if _env['tf']:
+    from .tflow import TFDatasetFromTensors, TFRDataset

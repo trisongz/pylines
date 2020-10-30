@@ -493,6 +493,7 @@ class Pylines:
         
         self.writer(json.dumps(item, ensure_ascii=False))
         self.writer('\n')
+        self.writer_fn.flush()
 
     def index(self, idx, fn=None):
         if fn:
