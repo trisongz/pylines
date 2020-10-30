@@ -646,11 +646,14 @@ class Pylines:
             self.input_fns = in_files
     
     def _setup_output_fn(self, output_fn):
+        if self.writer:
+            self.writer_fn.flush()
+            self.writer_fn.close()
+            self.writer, self.writer_fn = None, None
         if _io_type(output_fn) == 'str':
             self.output_fn = output_fn
         else:
             raise ValueError('Output Filenames should be a string')
-
 
     def parse(self, v):
         return parser.parse(v)
