@@ -228,6 +228,18 @@ def SerializeTorchWorker(ex):
     result = serialize_torch_example(ex)
     return result
 
+def _to_list(lst):
+    if isinstance(lst, list):
+        return lst
+    elif isinstance(lst, torch.Tensor):
+        array = lst.numpy()
+        lst = list(array)
+        return lst
+    elif isinstance(lst, numpy.ndarray):
+        return lst.tolist()
+    else:
+        return lst
+
 class DynamicCollate:
     def __init__(self, pad_token_id=0, all_keys=_all_keys_base, input_ids_key='input_ids', no_pad=['labels'], trim_batches=_trim_batch_key, lm_labels='labels'):
         self.pad_token_id = pad_token_id
@@ -245,17 +257,17 @@ class DynamicCollate:
         for example in batch:
             for key in self._datakeys:
                 if key == self._inputkey:
-                    batch_dict[key] += [pad_seq(example[key], max_size, self.pad_token_id)]
-                elif key in self._nopad:
-                    batch_dict[key] += [example[key]]
+                    batch_dict[key] += [pad_seq(_to_list(example[key]), max_size, self.pad_token_id)]
+                elif self._nopad and key in self._nopad:
+                    batch_dict[key] += [_to_list(example[key])]
                 else:
-                    batch_dict[key] += [pad_seq(example[key], max_size, 0)]
+                    batch_dict[key] += [pad_seq(_to_list(example[key]), max_size, 0)]
         
         if self._trim:
             batch_dict[self._trim[0]], batch_dict[self._trim[1]] = trim_batch(batch_dict[self._trim[0]], self.pad_token_id, attention_mask=batch_dict[self._trim[1]])
         
         if self._lmlabels:
-            lmlabels = batch_dict[self._lmlabels].clone()
+            lmlabels = np.ndarray(batch_dict[self._lmlabels])
             lmlabels[lmlabels[:, :] == self.pad_token_id] = -100
             batch_dict[self._lmlabels] = lmlabels
 

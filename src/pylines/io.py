@@ -20,6 +20,7 @@ import multiprocessing as mp
 import hashlib
 import gc
 logger = get_logger()
+_tokenize_fn = None
 
 # https://stackoverflow.com/questions/620367/how-to-jump-to-a-particular-line-in-a-huge-text-file
 class LineSeekableFile:
