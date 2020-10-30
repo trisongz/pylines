@@ -416,7 +416,7 @@ class Pylines:
         if not write:
             return results
 
-    def find(self, key, value, results='first', filename=None):
+    def find(self, key, value, results='first', filename=None, verbose=False):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
         _matched_results = list()
         _matched = False
@@ -427,7 +427,8 @@ class Pylines:
                     _matched = True
                 
                 if _matched:
-                    print(f'Found Match on IDX: {x}')
+                    if verbose:
+                        logger.info(f'Found Match on IDX: {x}')
                     if results == 'first':
                         break
                     elif results == 'all':
@@ -444,7 +445,8 @@ class Pylines:
                             break
                 
                     if _matched:
-                        print(f'Found Match on IDX: {x} in {fn}')
+                        if verbose:
+                            logger.info(f'Found Match on IDX: {x} in {fn}')
                         if results == 'first':
                             break
                         elif results == 'all':
