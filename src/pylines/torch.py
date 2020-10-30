@@ -253,15 +253,15 @@ class DynamicCollate:
     def __call__(self, batch):
         batch_dict = self._basedict
         max_size = max([len(example[self._inputkey]) for example in batch])
-        
-        for key in self._datakeys:
-            for example in batch:
+        #for key in self._datakeys:
+        for example in batch:
+            for key, v in example.items():
                 if key == self._inputkey:
-                    batch_dict[key] += [pad_seq(_to_list(example[key]), max_size, self.pad_token_id)]
+                    batch_dict[key] += [pad_seq(_to_list(v), max_size, self.pad_token_id)]
                 elif self._nopad and key in self._nopad:
-                    batch_dict[key] += [_to_list(example[key])]
+                    batch_dict[key] += [_to_list(v)]
                 else:
-                    batch_dict[key] += [pad_seq(_to_list(example[key]), max_size, 0)]
+                    batch_dict[key] += [pad_seq(_to_list(v), max_size, 0)]
         
         if self._trim:
             batch_dict[self._trim[0]], batch_dict[self._trim[1]] = trim_batch(batch_dict[self._trim[0]], self.pad_token_id, attention_mask=batch_dict[self._trim[1]])
