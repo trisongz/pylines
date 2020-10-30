@@ -235,6 +235,8 @@ class DynamicCollate:
         self._basedict = {}
         for key in self._datakeys:
             self._basedict[key] = list()
+        if not self._nopad:
+            self._nopad = []
     
     def __call__(self, batch):
         batch_dict = self._basedict
@@ -250,7 +252,7 @@ class DynamicCollate:
                     batch_dict[key] += [pad_seq(example[key], max_size, 0)]
         
         if self._trim:
-            batch_dict[self._trim[0]], batch_dict[self._trim[1]] = trim_batch(self._trim[0], self.pad_token_id, attention_mask=self._trim[1])
+            batch_dict[self._trim[0]], batch_dict[self._trim[1]] = trim_batch(batch_dict[self._trim[0]], self.pad_token_id, attention_mask=batch_dict[self._trim[1]])
         
         if self._lmlabels:
             lmlabels = batch_dict[self._lmlabels].clone()
