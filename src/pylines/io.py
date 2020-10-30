@@ -261,11 +261,11 @@ class Pylines:
 
     def _tokenize_examples(self, tokenizer_fn, use_mp=True):
         all_results = list()
-        if _tokenize_fn or tokenizer_fn:
+        if tokenizer_fn:
             for result in self.as_tokenizer(tokenizer_fn, use_mp=use_mp):
                 all_results.append(result)
         else:
-            logger.warning(f'No Tokenizer Function is Found. Assuming Input Files are Pretokenized.')
+            logger.warning(f'No Tokenizer Function Provided. Assuming Input Files are Pretokenized.')
             for result in self.as_iterator():
                 all_results.append(result)
         return all_results

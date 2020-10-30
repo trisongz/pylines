@@ -254,8 +254,8 @@ class DynamicCollate:
         batch_dict = self._basedict
         max_size = max([len(example[self._inputkey]) for example in batch])
         
-        for example in batch:
-            for key in self._datakeys:
+        for key in self._datakeys:
+            for example in batch:
                 if key == self._inputkey:
                     batch_dict[key] += [pad_seq(_to_list(example[key]), max_size, self.pad_token_id)]
                 elif self._nopad and key in self._nopad:
