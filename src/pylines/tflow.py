@@ -296,13 +296,9 @@ class TFDatasetFromTensors:
                 if name in self._features[i]:
                     _ds[i][name] = dataset[name]
         
-        logger.info(f'Feats: {self._features}, Num Axis: {self.num_axis}')
-        logger.info(f'columns: {self.columns}, Base Dataset Dict: {self._basedataset}')
-        _out = tuple()
-        for i in range(self.num_axis):
-            _out = _out + (_ds[i])
-
-        return _out
+        #logger.info(f'Feats: {self._features}, Num Axis: {self.num_axis}')
+        #logger.info(f'columns: {self.columns}, Base Dataset Dict: {self._basedataset}')
+        return tuple((_ds[i]) for i in _ds)
     
     def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
         _dataset = self.datasets[split]['examples']
