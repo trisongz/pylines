@@ -281,8 +281,8 @@ class TFDatasetFromTensors:
         for i, axis in enumerate(dataset_features):
             self.axis.append(axis)
             self.columns[axis] = dataset_features[axis]
-            self._features[i] = dataset_features[axis]['names']
-            self._basedataset[i] = {}
+            self._features[axis] = dataset_features[axis]['names']
+            self._basedataset[axis] = {}
         self.num_axis = len(self.axis)
         self.datasets = datasets
         for split in datasets:
@@ -290,15 +290,20 @@ class TFDatasetFromTensors:
             self.datasets[split]['examples'] = self._map_split(datasets[split]['examples'])
     
     def _map_split(self, dataset):
-        _ds = self._basedataset
-        for name in dataset:
-            for i in range(self.num_axis):
-                if name in self._features[i]:
-                    _ds[i][name] = dataset[name]
+        _ds = {}
+        for x in self.axis:
+            _ds[x] = {}
+            for feat in self._features[x]:
+                _ds[x][feat] = list()
+        for ex in dataset:
+            for key, v in ex.items():
+                for x in self.axis:
+                    if key in self._features[x]:
+                        _ds[x][key] += [v]
         
         #logger.info(f'Feats: {self._features}, Num Axis: {self.num_axis}')
         #logger.info(f'columns: {self.columns}, Base Dataset Dict: {self._basedataset}')
-        return tuple((_ds[i]) for i in _ds)
+        return tuple((_ds[x]) for x in _ds)
     
     def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
         _dataset = self.datasets[split]['examples']
