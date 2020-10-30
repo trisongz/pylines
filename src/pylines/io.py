@@ -420,7 +420,7 @@ class Pylines:
         if filename:
             for x, result in enumerate(self._fast_file_iter(filename)):
                 if result[key] == value:
-                    _matched_results.append(result.as_dict())
+                    _matched_results.append((result if _io_type(result) == 'dict' else result.as_dict()))
                     _matched = True
                 
                 if _matched:
@@ -435,7 +435,7 @@ class Pylines:
             for fn in self.input_fns:
                 for x, result in enumerate(self._fast_file_iter(fn)):
                     if result[key] == value:
-                        _matched_results.append(result.as_dict())
+                        _matched_results.append((result if _io_type(result) == 'dict' else result.as_dict()))
                         _matched = True
                         if results == 'first':
                             break
@@ -490,10 +490,14 @@ class Pylines:
             assert self.output_fn, 'Output File must be set prior to write. call .writefile(filename) to set the output file'
             self.writer_fn = get_write_fn(self.output_fn, overwrite=self._overwrite)
             self.writer = self.writer_fn.write
+            self._writeidx = 0
         
         self.writer(json.dumps(item, ensure_ascii=False))
         self.writer('\n')
-        self.writer_fn.flush()
+        self._writeidx += 1
+        if self._writeidx % 1000 == 0:
+            self.writer_fn.flush()
+            self._writeidx = 0
 
     def index(self, idx, fn=None):
         if fn:
@@ -686,6 +690,7 @@ class Pylines:
 
     def close(self):
         if self.writer:
+            self.writer_fn.flush()
             self.writer_fn.close()
         if self.reader:
             self.reader.close()
