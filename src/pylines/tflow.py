@@ -296,7 +296,7 @@ class TFDatasetFromTensors:
                 if name in self._features[i]:
                     _ds[i][name] = dataset[name]
 
-        return tuple(_ds[i] for i in self.axis)
+        return tuple(_ds[i] for i in range(self.num_axis))
     
     def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
         _dataset = self.datasets[split]['examples']
