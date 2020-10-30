@@ -405,11 +405,12 @@ class Pylines:
 
     def find(self, key, value, results='first', filename=None):
         assert results in ['first', 'all'], 'Results should either be all or first to return'
+        _matched_results = list()
         _matched = False
         if filename:
             for x, result in enumerate(self._fast_file_iter(filename)):
                 if result[key] == value:
-                    yield result.as_dict()
+                    _matched_results.append(result.as_dict())
                     _matched = True
                 
                 if _matched:
@@ -424,7 +425,7 @@ class Pylines:
             for fn in self.input_fns:
                 for x, result in enumerate(self._fast_file_iter(fn)):
                     if result[key] == value:
-                        yield result.as_dict()
+                        _matched_results.append(result.as_dict())
                         _matched = True
                         if results == 'first':
                             break
@@ -438,6 +439,8 @@ class Pylines:
 
                 if _matched and results == 'first':
                     break
+        
+        return _matched_results
     
     def merge(self, input_fns=None, output_fn=None):
         self._io(input_fns, output_fn)
