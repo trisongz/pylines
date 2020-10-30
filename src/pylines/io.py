@@ -14,6 +14,7 @@ if _env['torch']:
 #if _env['ray']:
 #    import ray.util.multiprocessing as mp
 #else:
+import math
 from .logger import get_logger
 import multiprocessing as mp
 import hashlib
@@ -491,11 +492,12 @@ class Pylines:
             self.writer_fn = get_write_fn(self.output_fn, overwrite=self._overwrite)
             self.writer = self.writer_fn.write
             self._writeidx = 0
+            self.flushidx = math.ceil(self.total_lines / 10)
         
         self.writer(json.dumps(item, ensure_ascii=False))
         self.writer('\n')
         self._writeidx += 1
-        if self._writeidx % 1000 == 0:
+        if self._writeidx % self.flushidx == 0:
             self.writer_fn.flush()
             self._writeidx = 0
 
