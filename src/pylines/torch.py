@@ -256,7 +256,9 @@ class DynamicCollate:
         #for key in self._datakeys:
         for example in batch:
             for key, v in example.items():
-                if key == self._inputkey:
+                if key not in self._datakeys:
+                    pass
+                elif key == self._inputkey:
                     batch_dict[key] += [pad_seq(_to_list(v), max_size, self.pad_token_id)]
                 elif self._nopad and key in self._nopad:
                     batch_dict[key] += [_to_list(v)]

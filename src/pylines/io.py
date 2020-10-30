@@ -268,6 +268,7 @@ class Pylines:
             logger.warning(f'No Tokenizer Function Provided. Assuming Input Files are Pretokenized.')
             for result in self.as_iterator():
                 all_results.append(result)
+            logger.info(f'Loaded {len(all_results)} Examples. Keys: {list(i for i in all_results[0])}')
         return all_results
 
     def as_encoder(self, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, use_mp=True):
