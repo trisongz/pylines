@@ -116,16 +116,22 @@ def setup_tokenize_fn(tokenizer_fn):
     _tokenize_fn = tokenizer_fn
 
 def TokenizerWorker(ex):
-    result = _tokenize_fn(ex)
-    return result
+    try:
+        result = _tokenize_fn(ex)
+        return result
+    except:
+        return None
 
 def setup_iter_fn(iter_fn):
     global _iter_func
     _iter_func = iter_fn
 
 def IterWorker(ex):
-    result = _iter_func(ex)
-    return result
+    try:
+        result = _iter_func(ex)
+        return result
+    except:
+        return None
 
 def setup_filter_fns(filter_fns):
     global _filter_func
@@ -343,7 +349,8 @@ class Pylines:
                 pool = mp.Pool()
             for fn in self.input_fns:
                 for result in pool.imap_unordered(Worker, FileIterator(fn)):
-                    yield result
+                    if result:
+                        yield result
                     if pbar:
                         pbar.update()
             
@@ -351,7 +358,8 @@ class Pylines:
             for fn in self.input_fns:
                 for result in self._file_iter(fn):
                     ex = IterFunc(result)
-                    yield ex
+                    if ex:
+                        yield ex
                     if pbar:
                         pbar.update()
         if pbar:
@@ -366,14 +374,16 @@ class Pylines:
             else:
                 pool = mp.Pool()
             for result in pool.imap_unordered(Worker, items):
-                yield result
+                if result:
+                    yield result
                 if pbar:
                     pbar.update()
             
         else:
             for item in items:
                 ex = IterFunc(item)
-                yield ex
+                if ex:
+                    yield ex
                 if pbar:
                     pbar.update()
         if pbar:
