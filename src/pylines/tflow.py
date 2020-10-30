@@ -283,7 +283,7 @@ class TFDatasetFromTensors:
             self.columns[axis] = dataset_features[axis]
             self._features[i] = dataset_features[axis]['names']
             self._basedataset[i] = {}
-        self.num_axis = len(self.num_axis)
+        self.num_axis = len(self.axis)
         self.datasets = datasets
         for split in datasets:
             self.splits.append(split)
@@ -336,7 +336,7 @@ class TFRDataset:
             self._datafields[axis] = dataset_features[axis]['names']
             self._features[i] = dataset_features[axis]['names']
             self._baserecord[i] = {}
-        self.num_axis = len(self.num_axis)
+        self.num_axis = len(self.axis)
         self.datasets = datasets
         for split in datasets:
             self.splits.append(split)

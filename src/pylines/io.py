@@ -231,7 +231,7 @@ class Pylines:
                 assert 'names' in dataset_features[axis], 'names is a required key for dataset features.'
             setup_tf_serialization_features(dataset_features)
         
-        for serialized_ex in self._as_iter_items(all_examples, serialize_tf_example, SerializeTFWorker, use_mp=use_mp, desc=f'Serializing to TFRecords'):
+        for serialized_ex in self._as_iter_items(all_examples, serialize_tf_example, SerializeTFWorker, use_mp=use_mp, desc=f'Serializing to Tensorflow'):
             yield serialized_ex
     
     def _tfwriter(self, all_examples, output_dir, dataset_features=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
