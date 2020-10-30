@@ -12,7 +12,9 @@ else:
 import os
 import subprocess
 import simdjson as json
+import pickle
 import time
+import types
 import tempfile
 
 parser = json.Parser()
@@ -62,6 +64,13 @@ try:
     _tqdm_available = True
 except ImportError:
     _tqdm_available = False
+try:
+    import numpy as np
+    _numpy_available = True
+except ImportError:
+    _numpy_available = False
+
+
 
 try:
     from google.cloud import storage
@@ -123,6 +132,7 @@ _env = {
     'tf': _tf_available,
     'ray': _ray_available,
     'tqdm': _tqdm_available,
+    'numpy': _numpy_available,
 }
 
 
@@ -211,42 +221,73 @@ def auth_cloud(gcs=None, s3=None):
     else:
         s3_client = None
 
-def get_read_fn(filename):
+_require_modes = ['smartopen', 'tf', 'open']
+_read = {
+    'tf': 'rb+',
+    'so': 'rb',
+    'o': 'rb'
+}
+_write = {
+    'tf': 'wb+',
+    'so': 'wb',
+    'o': 'wb'
+}
+_append = {
+    'tf': 'ab+',
+    'so': 'ab',
+    'o': 'ab'
+}
+
+def get_read_fn(filename, require=None):
+    if require:
+        assert require in _require_modes, f'Required format should be in {_require_modes}'
+        if require == 'smartopen' and _smartopen_available:
+            if filename.startswith('gs://') and _gcs_available:
+                return smart_open.open(filename, _read['so'], transport_params=dict(client=gcp_storage_client))
+            elif filename.startswith('s3://') and _s3_available:
+                return smart_open.open(filename, _read['so'], transport_params={'session': s3_client})
+            else:
+                return smart_open.open(filename, _read['so'])
+        elif require == 'tf' and _tf_available:
+            return tf.io.gfile.GFile(filename, _read['tf'])
+        else:
+            return open(filename, _read['o'])
+
     if filename.startswith('gs://'):
         if _tf_available:
-            return tf.io.gfile.GFile(filename, 'rb+')
+            return tf.io.gfile.GFile(filename, _read['tf'])
         elif _smartopen_available:
             if _gcs_available:
-                return smart_open.open(filename, 'rb', transport_params=dict(client=gcp_storage_client))
+                return smart_open.open(filename, _read['so'], transport_params=dict(client=gcp_storage_client))
             else:
-                return smart_open.open(filename, 'rb')
+                return smart_open.open(filename, _read['so'])
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
             if _s3_available:
-                return smart_open.open(filename, 'rb', transport_params={'session': s3_client})
+                return smart_open.open(filename, _read['so'], transport_params={'session': s3_client})
             else:
-                return smart_open.open(filename, 'rb')
+                return smart_open.open(filename, _read['so'])
         else:
             raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
         if _smartopen_available:
-            return smart_open.open(filename, 'rb')
+            return smart_open.open(filename, _read['so'])
         else:
             raise ValueError('SmartOpen is not available to open a HTTP File')
     elif filename.startswith('hdfs://') or filename.startswith('webhdfs://'):
         if _smartopen_available:
-            return smart_open.open(filename, 'rb')
+            return smart_open.open(filename, _read['so'])
         else:
             raise ValueError('SmartOpen is not available to open a HDFS File')
     else:
         if _tf_available:
-            return tf.io.gfile.GFile(filename, 'rb+')
+            return tf.io.gfile.GFile(filename, _read['tf'])
         elif _smartopen_available:
-            return smart_open.open(filename, 'rb')
+            return smart_open.open(filename, _read['so'])
         else:
-            return open(filename, 'rb')
+            return open(filename, _read['o'])
 
 def _file_exists(filename):
     if _tf_available:
@@ -254,51 +295,64 @@ def _file_exists(filename):
     else:
         return os.path.exists(filename)
 
-def get_write_fn(filename, overwrite=False):
+def get_write_fn(filename, overwrite=False, require=None):
     f_exists = _file_exists(filename)
     if overwrite:
-        _write_mode = 'wb'
+        _write_mode = _write
     elif f_exists:
-        _write_mode = 'ab'
+        _write_mode = _append
     else:
-        _write_mode = 'wb'
-    if _tf_available:
-        _write_mode = _write_mode + '+'
+        _write_mode = _write
+
+    if require:
+        assert require in _require_modes, f'Required format should be in {_require_modes}'
+        if require == 'smartopen' and _smartopen_available:
+            if filename.startswith('gs://') and _gcs_available:
+                return smart_open.open(filename, _write_mode['so'], transport_params=dict(client=gcp_storage_client))
+            elif filename.startswith('s3://') and _s3_available:
+                return smart_open.open(filename, _write_mode['so'], transport_params={'session': s3_client})
+            else:
+                return smart_open.open(filename, _write_mode['so'])
+        elif require == 'tf' and _tf_available:
+            return tf.io.gfile.GFile(filename, _write_mode['tf'])
+        else:
+            return open(filename, _write_mode['o'])
+
     if filename.startswith('gs://'):
         if _tf_available:
-            return tf.io.gfile.GFile(filename, _write_mode)
+            return tf.io.gfile.GFile(filename, _write_mode['tf'])
         elif _smartopen_available:
             if _gcs_available:
-                return smart_open.open(filename, _write_mode, transport_params=dict(client=gcp_storage_client))
+                return smart_open.open(filename, _write_mode['so'], transport_params=dict(client=gcp_storage_client))
             else:
-                return smart_open.open(filename, _write_mode)
+                return smart_open.open(filename, _write_mode['so'])
         else:
             raise ValueError('Tensorflow and SmartOpen are not available to open a GCS File')
     elif filename.startswith('s3://'):
         if _smartopen_available:
             if _s3_available:
-                return smart_open.open(filename, _write_mode, transport_params={'session': s3_client})
+                return smart_open.open(filename, _write_mode['so'], transport_params={'session': s3_client})
             else:
-                return smart_open.open(filename, _write_mode)
+                return smart_open.open(filename, _write_mode['so'])
         else:
             raise ValueError('SmartOpen is not available to open a S3 File')
     elif filename.startswith('https://'):
         if _smartopen_available:
-            return smart_open.open(filename, _write_mode)
+            return smart_open.open(filename, _write_mode['so'])
         else:
             raise ValueError('SmartOpen is not available to open a HTTP File')
     elif filename.startswith('hdfs://') or filename.startswith('webhdfs://'):
         if _smartopen_available:
-            return smart_open.open(filename, _write_mode)
+            return smart_open.open(filename, _write_mode['so'])
         else:
             raise ValueError('SmartOpen is not available to open a HDFS File')
     else:
         if _tf_available:
-            return tf.io.gfile.GFile(filename, _write_mode)
+            return tf.io.gfile.GFile(filename, _write_mode['tf'])
         elif _smartopen_available:
-            return smart_open.open(filename, _write_mode)
+            return smart_open.open(filename, _write_mode['so'])
         else:
-            return open(filename, _write_mode)
+            return open(filename, _write_mode['o'])
 
 
 def line_count(filename):
@@ -309,6 +363,20 @@ def create_idx_key(filename, line):
     idx_fn = (filename.split('.')[-1].strip() + '.idx')
     json.dump(idx, get_write_fn(idx_fn), overwrite=True)
     return idx
+
+def load_pkle(filename):
+    with get_read_fn(filename) as f:
+        return pickle.load(f)
+
+def save_pkle(data, filename):
+    with get_write_fn(filename) as f:
+        pickle.dump(data, f)
+
+def load_data(file_io):
+    return pickle.load(file_io)
+
+def save_data(data, file_io):
+    pickle.dump(data, file_io)
 
 def get_idx_key(filename):
     idx_fn = (filename.split('.')[-1].strip() + '.idx')
@@ -368,6 +436,17 @@ class Timer:
         self.start_time = 0
         return time_string
 
+def iterator_function(function=None, **kwargs):
+    assert function is not None, "Please supply a function"
+    def inner_func(function=function, **kwargs):
+        generator = function(**kwargs)
+        assert isinstance(generator, types.GeneratorType), "Invalid function"
+        try:
+            yield next(generator)
+        except StopIteration:
+            generator = function(**kwargs)
+            yield next(generator)
+    return inner_func
 
 from . import logger
 from . import io

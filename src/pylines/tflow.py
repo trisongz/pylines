@@ -1,4 +1,4 @@
-from . import _file_exists, _env, get_read_fn, get_write_fn, Timer
+from . import _file_exists, _env, get_read_fn, get_write_fn, Timer, _io_type
 import tensorflow as tf
 from threading import Thread
 import tempfile
@@ -6,9 +6,11 @@ import math
 import os
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
-
+import random
 from .logger import get_logger
+
 logger = get_logger()
+AUTO = tf.data.experimental.AUTOTUNE
 
 '''
 dataset_features = {
@@ -34,15 +36,14 @@ def setup_tf_serialization_features(dataset_features):
     for axis in dataset_features:
         _tf_example_features += dataset_features[axis]['names']
 
-def serialize_example(ex):
+def serialize_tf_example(ex):
     feature = {feat: _int64_feature(ex[feat]) for feat in _tf_example_features}
     example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
     return example_proto.SerializeToString()
 
-def SerializeWorker(ex):
-    result = serialize_example(ex)
+def SerializeTFWorker(ex):
+    result = serialize_tf_example(ex)
     return result
-
 
 class TFileIO:
     def __init__(self, outfile=None, tmpfile=None, copy=False, gcopy=False, remove_tmp=True):
@@ -120,6 +121,7 @@ class TFRWriter(object):
             self.fn = self.openfile()
             self.filename = self.fn.filename
             self.writer = self.fn.write
+            self._files = list()
 
         else:
             self.writer(x)
@@ -131,7 +133,11 @@ class TFRWriter(object):
 
     def close(self):
         logger.info(f'Closing. Shard {self.shard}/{self._numfiles}\nFilename: {self.filename}\n{self.idx} Examples written in {self.timer.time()}.\nRemaining Items: {self._total - self.idx}/{self._total}.')        
-        self.fn.close()    
+        try:
+            self.fn.close()
+        except:
+            pass
+        return self._files, self.idx
     
     def openfile(self):
         self.curr_idx = 0
@@ -187,3 +193,241 @@ class TFRWriter(object):
     def __exit__(self, *_):
         logger.info(f"- TFRecords Writer is Closing")
         self.close()
+
+''' args for TFRDataset
+datasets = {
+    'train': {
+        'path': '/path/to/train/',
+        'batch_size': 8,
+    },
+    'validation': {
+        'path': 'gs://bucket/dataset/val/,
+        'batch_size:' 16,
+    },
+    'test': {
+        'path': '/path/to/test/',
+        'batch_size': 12,
+    }
+}
+dataset_features = {
+        'x': {
+            'length': 416,
+            'names': ["input_ids", "attention_mask"]
+        },
+        'y': {
+            'length': 96,
+            'names': ["target_ids", "target_attention_mask", "shifted_target_input_ids"]
+        }
+    }
+'''
+
+def find_max(seq, curr_max):
+    return max(len(seq), curr_max)
+
+def find_maxes(seqs):
+    m = 0
+    for seq in seqs:
+        m = find_max(seq, m)
+    return m
+
+def setup_detokenize_fn(detokenizer_fn):
+    assert _env['transformers'], 'Transformers must be installed to use detokenize function'
+    global _detokenize_fn
+    _detokenize_fn = detokenizer_fn
+
+def DetokenizerWorker(ex):
+    result = _detokenize_fn(ex)
+    return result
+
+'''
+tensor_datasets : {
+    'train': {
+        'examples': dataset,
+        'batch_size': 8
+    },
+    'validation': {
+        'examples': dataset,
+        'batch_size': 8
+    },
+    'test': {
+        'examples': dataset,
+        'batch_size': 8
+    }
+}
+'''
+
+def count_tfdataset(dataset):
+    idx = tf.data.experimental.cardinality(dataset).numpy()
+    if _io_type(idx) == 'int':
+        return idx
+
+    idx = 0
+    ds_iter = next(iter(dataset))
+    while True:
+        try:
+            ds_iter()
+            idx += 1
+        except StopIteration:
+            break
+    return idx
+
+class TFDatasetFromTensors:
+    def __init__(self, datasets, dataset_features):
+        self._setup_dataset_mapping(datasets, dataset_features)
+        
+    def _setup_dataset_mapping(self, datasets, dataset_features):
+        self.axis, self._features, self._datafields, self.columns, self.splits = list(), dict(), dict(), dict(), list() 
+        self._basedataset = {}
+        for i, axis in enumerate(dataset_features):
+            self.axis.append(axis)
+            self.columns[axis] = dataset_features[axis]
+            self._features[i] = dataset_features[axis]['names']
+            self._basedataset[i] = {}
+        self.num_axis = len(self.num_axis)
+        self.datasets = datasets
+        for split in datasets:
+            self.splits.append(split)
+            self.datasets[split]['examples'] = self._map_split(datasets[split]['examples'])
+    
+    def _map_split(self, dataset):
+        _ds = self._basedataset
+        for name in dataset:
+            for i in range(self.num_axis):
+                if name in self._features[i]:
+                    _ds[i][name] = dataset[name]
+
+        return (_ds[i] for i in self.num_axis)
+    
+    def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
+        _dataset = self.datasets[split]['examples']
+        _batchsize = self.datasets[split]['batch_size'] * num_devices
+        logger.info(f'- Building TF Dataset From Tensors for {split} with {_batchsize} Batch Size')
+        ignore_order = tf.data.Options()
+        if not ordered:
+            ignore_order.experimental_deterministic = False # disable order, increase speed
+        
+        dataset = tf.data.Dataset.from_tensor_slices(_dataset)
+        dataset = dataset.with_options(ignore_order)
+        if shuffle:
+            dataset = dataset.shuffle(2048)
+        dataset = dataset.batch(_batchsize, drop_remainder=False)
+        logger.info('Dataset Features')
+        for x in self.axis:
+            logger.info(f'{x} [{self.columns[x]["length"]}]: {self.columns[x]["names"]}')
+        dataset = dataset.prefetch(buffer_size=AUTO)
+        if return_total:
+            num_items = count_tfdataset(dataset)
+            return dataset, num_items
+        return dataset
+
+
+class TFRDataset:
+    def __init__(self, datasets, dataset_features, tokenizer=None, validate=True, validate_num=5, verbose=False):
+        self.validate, self._numvalidate, self.verbose = validate, validate_num, verbose
+        self.tokenizer = tokenizer
+        self._setup_dataset_mapping(datasets, dataset_features)
+        
+    def _setup_dataset_mapping(self, datasets, dataset_features):
+        self.axis, self._features, self._datafields, self.columns, self.splits, self._tfrfiles = list(), dict(), dict(), dict(), list(), dict()
+        self._baserecord = {}
+        for i, axis in enumerate(dataset_features):
+            self.axis.append(axis)
+            self.columns[axis] = dataset_features[axis]
+            self._datafields[axis] = dataset_features[axis]['names']
+            self._features[i] = dataset_features[axis]['names']
+            self._baserecord[i] = {}
+        self.num_axis = len(self.num_axis)
+        self.datasets = datasets
+        for split in datasets:
+            self.splits.append(split)
+            if not self.datasets[split]['path'].endswith('/'):
+                self.datasets[split]['path'] = self.datasets[split]['path'] + '/'
+            self.datasets[split]['globpath'] = os.path.join(self.datasets[split]['path'], (split + '*'))
+            self._tfrfiles[split] = tf.io.gfile.glob(self.datasets[split]['globpath'])
+
+    def get_dataset(self, split, shuffle=True, ordered=False, num_devices=1, return_total=True):
+        _dspath = self.datasets[split]['path']
+        _tfrfiles = self._tfrfiles[split]
+        _batchsize = self.datasets[split]['batch_size'] * num_devices
+        assert len(_tfrfiles) != 0, 'Dataset loaded zero files. Something went wrong loading this file batch. Check File Paths.'
+        logger.info(f'- Building TFRecords Dataset for {split}: {len(_tfrfiles)} files from {_dspath} with {_batchsize} Batch Size')
+        if shuffle:
+            random.shuffle(_tfrfiles)
+        if len(_tfrfiles) >= 10:
+            logger.info(f'Displaying First 10 Records{" [shuffled]" if shuffle else " "}')
+        _displayfiles = _tfrfiles[:10] if len(_tfrfiles) >= 10 else _tfrfiles
+        for _f in _displayfiles:
+            _fn = _f.replace(_dspath, '')
+            logger.info(f'- {_fn}')
+        logger.info('')
+        ignore_order = tf.data.Options()
+        if not ordered:
+            ignore_order.experimental_deterministic = False # disable order, increase speed
+        dataset = tf.data.TFRecordDataset(_tfrfiles, num_parallel_reads=AUTO)
+        dataset = dataset.with_options(ignore_order)
+        if shuffle:
+            dataset = dataset.shuffle(2048)
+        dataset = dataset.map(self.parse_example, num_parallel_calls=AUTO)
+        dataset = dataset.map(self.transform_record, num_parallel_calls=AUTO)
+        dataset = dataset.batch(_batchsize, drop_remainder=False)
+        logger.info('Dataset Features')
+        for x in self.axis:
+            logger.info(f'{x} [{self.columns[x]["length"]}]: {self.columns[x]["names"]}')
+
+        dataset = dataset.prefetch(buffer_size=AUTO)
+        if self.validate:
+            self.validate_dataset(dataset, split)
+        if return_total:
+            num_items = count_tfdataset(dataset)
+            return dataset, num_items
+
+        return dataset
+
+
+    def transform_record(self, record):
+        _rec = self._baserecord
+        for name in record:
+            for i in range(self.num_axis):
+                if name in self._features[i]:
+                    _rec[i][name] = record[name]
+
+        return (_rec[i] for i in self.num_axis)
+
+    def parse_example(self, serialized_example):
+        example = tf.io.parse_single_example(serialized_example, self._datafields)
+        for name in list(example.keys()):
+            t = example[name]
+            if t.dtype == tf.int64:
+                t = tf.cast(t, tf.int32)
+            example[name] = t
+        return example
+
+    def validate_dataset(self, dataset, split):
+        idx, valid = 0, 0
+        for item in dataset.take(self._numvalidate):
+            for i in range(self.num_axis):
+                _axis = self.axis[i]
+                for req in self._features[i]:
+                    assert req in item[i].keys(), f'{req} is not in data {_axis}, your data keys: {item[i].keys()}'
+                    assert len(item[i][req][0]) == self.columns[_axis]['length'], f"{req} dimension size is {len(item[i][req][0])}, not matching {self.columns[_axis]['length']}"
+                    if idx == 0:
+                        logger.info(f'IDX: {idx} [{req}] - Max Seq Length: {find_maxes(item[i][req])}, {len(item[i][req])}')
+                        if self.verbose:
+                            logger.info(f'({_axis} axis) {req} -> {item[i][req]}')
+                            logger.info('\n')
+            
+                        if self.tokenizer and req == 'input_ids':
+                            _batch = item[i][req]
+                            for batch in _batch:
+                                logger.info(f'(detokenized) -> {self.tokenizer.decode(batch)}')
+                                logger.info('\n')
+
+
+            logger.info('****' * 20)
+            logger.info(f'IDX: {idx} Passed All Validation Checks')
+            valid += 1
+            idx += 1
+        
+        logger.info('****' * 20)
+        logger.info(f'Dataset [{split}]: Passed {valid} Validation Checks')
+        logger.info('****' * 20)

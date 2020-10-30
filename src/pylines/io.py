@@ -5,7 +5,11 @@ from . import _env, parser, json, glob, Timer
 if _env['tqdm']:
     from tqdm.auto import tqdm, trange
 if _env['tf']:
-    from .tflow import setup_tf_serialization_features, serialize_example, SerializeWorker, TFRWriter
+    from .tflow import setup_tf_serialization_features, serialize_tf_example, SerializeTFWorker, TFRWriter
+    from .tflow import TFDatasetFromTensors, TFRDataset
+if _env['torch']:
+    from .torch import serialize_torch_example, SerializeTorchWorker, setup_torch_serialization_features
+    from .torch import TorchWriter, DynamicCollate, PylinesDataset, PylinesIterableFunctionDataset, PylinesDatasetFromIterator
 
 #if _env['ray']:
 #    import ray.util.multiprocessing as mp
@@ -13,6 +17,7 @@ if _env['tf']:
 from .logger import get_logger
 import multiprocessing as mp
 import hashlib
+import gc
 logger = get_logger()
 
 # https://stackoverflow.com/questions/620367/how-to-jump-to-a-particular-line-in-a-huge-text-file
@@ -163,6 +168,7 @@ class Pylines:
         self.input_fns, self.output_fn = None, None
         self.stats = {}
         self.timer = Timer()
+        self.stored_items = list()
         self._io(input_fns, output_fn)
     
     def as_tokenizer(self, tokenizer_fn=None, input_fns=None, use_mp=True):
@@ -211,16 +217,41 @@ class Pylines:
             self.write(result)
         self.flush()
     
-    def as_encoder(self, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, use_mp=True):
-        _methods = ['tf']
-        assert serialization in _methods, f'Currently only {_methods} are supported'
-        assert _env['tf'], 'Tensorflow is required to run Serialization'
+    def _tfencoder(self, all_examples, dataset_features=None, use_mp=True):
         if dataset_features:
             for axis in dataset_features:
                 assert 'names' in dataset_features[axis], 'names is a required key for dataset features.'
             setup_tf_serialization_features(dataset_features)
+        
+        for serialized_ex in self._as_iter_items(all_examples, serialize_tf_example, SerializeTFWorker, use_mp=use_mp, desc=f'Serializing to TFRecords'):
+            yield serialized_ex
+    
+    def _tfwriter(self, all_examples, output_dir, dataset_features=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
+        _total_match = self.count_matching(split_key, split) if split_key else self.total_lines
+        with TFRWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir) as writer:
+            for serialized_ex in self._tfencoder(all_examples, dataset_features, use_mp):
+                writer.write(serialized_ex)
+        
+        tfrecord_files, total_items = writer.close()
+        return tfrecord_files, total_items
 
-        self._io(input_fns, output_fn=None)
+    def _torchencoder(self, all_examples, dataset_features=None, use_mp=True):
+        if dataset_features:
+            setup_torch_serialization_features(dataset_features)
+
+        for serialized_ex in self._as_iter_items(all_examples, serialize_torch_example, SerializeTorchWorker, use_mp=use_mp, desc=f'Serializing to Torch'):
+            yield serialized_ex
+    
+    def _torchwriter(self, all_examples, output_dir, dataset_features=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.pkl', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True, compression=True):
+        _total_match = self.count_matching(split_key, split) if split_key else self.total_lines
+        with TorchWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir, compression) as writer:
+            for serialized_ex in self._torchencoder(all_examples, dataset_features, use_mp):
+                writer.write(serialized_ex)
+        
+        torch_files, total_items = writer.close()
+        return torch_files, total_items
+
+    def _tokenize_examples(self, tokenizer_fn, use_mp=True):
         all_results = list()
         if _tokenize_fn or tokenizer_fn:
             for result in self.as_tokenizer(tokenizer_fn, use_mp=use_mp):
@@ -229,20 +260,78 @@ class Pylines:
             logger.warning(f'No Tokenizer Function is Found. Assuming Input Files are Pretokenized.')
             for result in self.as_iterator():
                 all_results.append(result)
-        
-        for serialized_ex in self._as_iter_items(all_results, serialize_example, SerializeWorker, use_mp=use_mp, desc=f'Serializing to {serialization}'):
-            yield serialized_ex
-        logger.info(f'{self.timer.stop()} for Serializing {len(all_results)} Examples')
+        return all_results
 
-    def run_encoder(self, output_dir, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
+    def as_encoder(self, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, use_mp=True):
+        _methods = ['tf', 'torch']
+        assert serialization in _methods, f'Currently only {_methods} are supported'
+        assert _env[serialization], f'{serialization} library is required to run Serialization'
         self._io(input_fns, output_fn=None)
-        _total_match = self.count_matching(split_key, split) if split_key else self.total_lines
-        with TFRWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir) as writer:
-            for serialized_ex in self.as_encoder(dataset_features, tokenizer_fn, use_mp=use_mp):
-                writer.write(serialized_ex)
-        
-        #writer.close()
+        all_examples = self._tokenize_examples(tokenizer_fn, use_mp)
+        if serialization == 'tf':
+            for serialized_ex in self._tfencoder(all_examples, dataset_features, use_mp):
+                yield serialized_ex
+        elif serialization == 'torch':
+            for serialized_ex in self._torchencoder(all_examples, dataset_features, use_mp):
+                yield serialized_ex
+       
+        logger.info(f'{self.timer.stop()} for Serializing [{serialization}] {len(all_examples)} Examples')
 
+    def run_encoder(self, output_dir, dataset_features=None, tokenizer_fn=None, serialization='tf', input_fns=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True, compression=True):
+        self._io(input_fns, output_fn=None)
+        all_examples = self._tokenize_examples(tokenizer_fn, use_mp)
+        if serialization == 'tf':
+            tfrecord_files, total_items = self._tfwriter(all_examples, output_dir, dataset_features, start_idx, split_key, split, write_string, shard_size, overwrite, use_tempdir, use_mp)
+            return tfrecord_files, total_items
+        elif serialization == 'torch':
+            torch_files, total_items = self._torchwriter(all_examples, output_dir, dataset_features, start_idx, split_key, split, write_string, shard_size, overwrite, use_tempdir, use_mp, compression)
+            return torch_files, total_items
+
+    def as_dataset(self, batch_sizes, dataset_features=None, tokenizer_fn=None, framework='tf', input_fns=None, split_key='split', splits=['train', 'validation', 'test'], use_mp=True):
+        self._io(input_fns, output_fn=None)
+        all_examples = self._tokenize_examples(tokenizer_fn, use_mp)
+        _dataset = dict()
+        _encoder_fn = self._tfencoder if framework == 'tf' else None
+        if splits:
+            _splitdataset = self._dataset_splits(all_examples, split_key, splits)
+            for split in splits:
+                if _encoder_fn:
+                    _encoded_examples = list()
+                    for example in _encoder_fn(_splitdataset[split], dataset_features, use_mp):
+                        _encoded_examples.append(example)
+                else:
+                    _encoded_examples = _splitdataset[split]
+                _dataset[split] = {'examples': _encoded_examples, 'batch_size': batch_sizes[split]}
+            _splitdataset = None
+            gc.collect()
+        else:
+            if _encoder_fn:
+                _encoded_examples = list()
+                for example in _encoder_fn(all_examples, dataset_features, use_mp):
+                    _encoded_examples.append(example)
+            else:
+                _encoded_examples = all_examples
+            _dataset['train'] = {'examples': _encoded_examples, 'batch_size': batch_sizes}
+            splits = ['train']
+        
+        if framework == 'tf':
+            _tfdataset = TFDatasetFromTensors(_dataset, dataset_features)
+            return _tfdataset
+        elif framework == 'torch':
+            _torchdataset = dict()
+            for split in splits:
+                _torchdataset[split] = PylinesDataset(num_examples=len(_dataset[split]['examples']), examples=_dataset[split]['examples'])
+            logger.info('Torch Dataset should be used with DynamicCollate function with the DataLoader for Optimal Performance')
+            return _torchdataset
+
+    def _dataset_splits(self, all_examples, split_key, splits):
+        split_results = dict()
+        for split in splits:
+            split_results[split] = list()
+        for example in all_examples:
+            ex_split = example[split_key]
+            split_results[ex_split].append(example)
+        return split_results
 
     def _as_iter(self, IterFunc, Worker, use_mp, desc):
         pbar = trange(self.total_lines, desc=desc) if _env['tqdm'] else None
@@ -421,14 +510,25 @@ class Pylines:
             results.append(result)
         return results
 
-    def from_list(self, all_items, output_fn=None):
+    def from_list(self, all_items, write=True, clear_items=False, output_fn=None):
         self._io(input_fns=None, output_fn=output_fn)
         assert _io_type(all_items) == 'list', 'This function must be used with a list'
-        for item in all_items:
-            self.write(item)
+        if write:
+            logger.info(f'Writing {len(all_items)} to {self.output_fn}')
+            for item in all_items:
+                self.write(item)
+        else:
+            if clear_items:
+                logger.info(f'Flushing Existing Items from Memory')
+                self.stored_items = None
+                gc.collect()
+                self.stored_items = list()
+            self.stored_items += all_items
+            logger.info(f'Stored {len(all_items)} to Memory. Total Stored Items: {len(self.stored_items)}. Call pylines.stored_items to access items.')
 
-    def to_batches(self, all_items, batch_size=2):
+    def to_batches(self, all_items=None, batch_size=2):
         all_batches = list()
+        all_items = all_items if all_items else self.stored_items
         for batch in self._build_batches(all_items, batch_size):
             all_batches += [batch]
         return all_batches
@@ -588,7 +688,6 @@ class Pylines:
         for fn in self.input_fns:
             results[fn] = line_count(fn)
         return results
-
 
     def __len__(self):
         return self.total_lines        
