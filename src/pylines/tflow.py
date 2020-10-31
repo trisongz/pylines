@@ -292,14 +292,14 @@ class TFDatasetFromTensors:
     def _map_split(self, dataset):
         _ds = {}
         for x in self.axis:
-            _ds[x] = {}
-            for feat in self._features[x]:
-                _ds[x][feat] = list()
-        for ex in dataset:
-            for key, v in ex.items():
-                for x in self.axis:
-                    if key in self._features[x]:
-                        _ds[x][key] += [v]
+            _ds[x] = {i: dataset[i] for i in feat in self._features[x]}
+            #for feat in self._features[x]:
+            #    _ds[x][feat] = list()
+        #for ex in dataset:
+        #    for key, v in ex.items():
+        #        for x in self.axis:
+        #            if key in self._features[x]:
+        #                _ds[x][key] += [v]
         
         #logger.info(f'Feats: {self._features}, Num Axis: {self.num_axis}')
         #logger.info(f'columns: {self.columns}, Base Dataset Dict: {self._basedataset}')

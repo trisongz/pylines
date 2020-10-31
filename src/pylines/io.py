@@ -225,19 +225,37 @@ class Pylines:
             self.write(result)
         self.flush()
     
-    def _tfencoder(self, all_examples, dataset_features=None, use_mp=True):
+    def _tftensordict(self, all_examples, dataset_features=None):
+        _features = list()
+        _tensor_examples = dict()
+        for axis in dataset_features:
+            _features += dataset_features[axis]['names']
+        for feats in _features:
+            _tensor_examples[feats] = list()
+        for ex in all_examples:
+            for key, v in ex.items():
+                if key in _features:
+                    _tensor_examples[key].extend(v)
+        return _tensor_examples
+
+    def _tfencoder(self, all_examples, dataset_features=None, slices=True, use_mp=True):
         if dataset_features:
             for axis in dataset_features:
                 assert 'names' in dataset_features[axis], 'names is a required key for dataset features.'
             setup_tf_serialization_features(dataset_features)
         
-        for serialized_ex in self._as_iter_items(all_examples, serialize_tf_example, SerializeTFWorker, use_mp=use_mp, desc=f'Serializing to Tensorflow'):
-            yield serialized_ex
-    
+        if slices:
+            _tensor_ds = self._tftensordict(all_examples, dataset_features)
+            return _tensor_ds
+            
+        else:
+            for serialized_ex in self._as_iter_items(all_examples, serialize_tf_example, SerializeTFWorker, use_mp=use_mp, desc=f'Serializing to TFRecords'):
+                yield serialized_ex
+
     def _tfwriter(self, all_examples, output_dir, dataset_features=None, start_idx=1, split_key='split', split='train', write_string='{}_shard_{}.tfrecords', shard_size=50000, overwrite=False, use_tempdir=False, use_mp=True):
         _total_match = self.count_matching(split_key, split) if split_key else self.total_lines
         with TFRWriter(output_dir, _total_match, start_idx, split, write_string, shard_size, overwrite, use_tempdir) as writer:
-            for serialized_ex in self._tfencoder(all_examples, dataset_features, use_mp):
+            for serialized_ex in self._tfencoder(all_examples, dataset_features, slices=False, use_mp=use_mp):
                 writer.write(serialized_ex)
         
         tfrecord_files, total_items = writer.close()
@@ -665,7 +683,10 @@ class Pylines:
         return parser.parse(v)
 
     def loads(self, v):
-        return parser.parse(v).as_dict()
+        if _io_type(v) == 'bytes':
+            return parser.parse(v).as_dict()
+        else:
+            return json.loads(v)
 
     def load(self, v):
         return json.load(v)

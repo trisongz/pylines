@@ -403,6 +403,8 @@ def _io_type(x):
         return 'int'
     elif isinstance(x, float):
         return 'float'
+    elif isinstance(x, bytes):
+        return 'bytes'
 
 class Timer:
     def __init__(self):

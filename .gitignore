@@ -3,3 +3,8 @@ src/pylines.egg-info/*
 dist/*
 build/*
 build.sh
+src/pylines/__init__.py
+src/pylines/__pycache__/__init__.cpython-38.pyc
+src/pylines/__pycache__/io.cpython-38.pyc
+src/pylines/__pycache__/logger.cpython-38.pyc
+tests/hash.py
