@@ -86,6 +86,8 @@ try:
         else:
             gcp_client, gcp_storage_client = None, None
             _gcs_available = False
+    else:
+        _gcs_available = False
 except ImportError:
     gcp_client, gcp_storage_client = None, None
     _gcs_available = False
