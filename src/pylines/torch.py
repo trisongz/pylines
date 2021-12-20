@@ -1,5 +1,4 @@
 from . import _file_exists, _env, get_read_fn, get_write_fn, Timer
-from . import save_pkle, load_pkle, load_data, save_data, iterator_function
 import torch
 from torch.utils.data import Dataset, IterableDataset, DataLoader
 from threading import Thread
@@ -9,14 +8,20 @@ import math
 import gc
 import os
 import glob
-if _env['tqdm']:
+if _env.get('tqdm'):
     from tqdm.auto import tqdm, trange
-if _env['numpy']:
+if _env.get('numpy'):
     import numpy as np
-if _env['tf']:
+if _env.get('tf'):
     import tensorflow as tf
 import random
 from .logger import get_logger
+
+def load_data(file_pointer):
+    return torch.load(file_pointer)
+
+def save_data(data: torch.Tensor, file_pointer):
+    return torch.save(data, file_pointer)
 
 logger = get_logger()
 
@@ -372,7 +377,7 @@ class PylinesIterableFunctionDataset(IterableDataset):
         return chain.from_iterable(map(self._iter_examples, cycle(examples)))
 
     def _create_iter_from_function(self, func):
-        return iterator_function(func)
+        return iter(func)
 
     def _load_all_examples(self):
         for ex in self._iter():
