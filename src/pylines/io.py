@@ -514,7 +514,7 @@ class Pylines:
             self.writer_fn = get_write_fn(self.output_fn, overwrite=self._overwrite)
             self.writer = self.writer_fn.write
             self._writeidx = 0
-            self.flushidx = math.ceil(self.total_lines / 10)
+            self.flushidx = max(1, math.ceil(self.total_lines / 10))
         
         self.writer(json.dumps(item, ensure_ascii=False))
         self.writer('\n')
