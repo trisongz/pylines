@@ -680,7 +680,7 @@ class Pylines:
             raise ValueError('Output Filenames should be a string')
 	
     def set_output_fn(self, output_fn):
-	_setup_output_fn(self, output_fn)
+        _setup_output_fn(self, output_fn)
 	
     def parse(self, v):
         return parser.parse(v)
